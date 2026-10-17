@@ -1,11 +1,22 @@
+import sys
+import os
+
+# Ensure project root is in sys.path regardless of execution directory
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import cv2
 import asyncio
 import threading
 import time
 from collections import deque
-from flask import Flask, Response, jsonify
+from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 from ultralytics import YOLO
+
+try:
+    from robot.modules.registry import registry
+except ModuleNotFoundError:
+    from modules.registry import registry
 
 app = Flask(__name__)
 CORS(app)
@@ -132,6 +143,7 @@ def video_feed():
 @app.route('/status')
 def status():
     current_g = gforce_history[-1][1] if gforce_history else 1.0
+    history = registry.get_history()
     return jsonify({
         'emergency': emergency,
         'fall_waiting': fall_waiting,
@@ -140,7 +152,78 @@ def status():
         'person_count': person_count,
         'current_g': round(current_g, 2),
         'activity_level': activity_level,
+        'attached_modules': registry.get_attached(),
+        'last_module_log': history[0] if history else None,
     })
+
+
+@app.route('/modules/available')
+def modules_available():
+    return jsonify(registry.get_available())
+
+
+@app.route('/modules/attached')
+def modules_attached():
+    return jsonify(registry.get_attached())
+
+
+@app.route('/modules/history')
+def modules_history():
+    return jsonify(registry.get_history())
+
+
+@app.route('/modules/attach', methods=['POST'])
+def modules_attach():
+    data = request.get_json(silent=True) or {}
+    slot = data.get('slot')
+    module_id = data.get('module_id')
+    if not slot or not module_id:
+        return jsonify({'success': False, 'error': 'Missing slot or module_id'}), 400
+
+    robot_state = {
+        'emergency': emergency,
+        'fall_waiting': fall_waiting,
+        'direction': latest_direction,
+        'activity_level': activity_level
+    }
+    res = registry.attach(slot, module_id, robot_state=robot_state)
+    return jsonify(res)
+
+
+@app.route('/modules/detach', methods=['POST'])
+def modules_detach():
+    data = request.get_json(silent=True) or {}
+    slot = data.get('slot')
+    if not slot:
+        return jsonify({'success': False, 'error': 'Missing slot'}), 400
+
+    robot_state = {
+        'emergency': emergency,
+        'fall_waiting': fall_waiting,
+        'direction': latest_direction,
+        'activity_level': activity_level
+    }
+    res = registry.detach(slot, robot_state=robot_state)
+    return jsonify(res)
+
+
+@app.route('/modules/execute', methods=['POST'])
+def modules_execute():
+    data = request.get_json(silent=True) or {}
+    slot = data.get('slot')
+    action = data.get('action', 'trigger')
+    params = data.get('params')
+    if not slot:
+        return jsonify({'success': False, 'error': 'Missing slot'}), 400
+
+    robot_state = {
+        'emergency': emergency,
+        'fall_waiting': fall_waiting,
+        'direction': latest_direction,
+        'activity_level': activity_level
+    }
+    res = registry.execute(slot, action=action, params=params, robot_state=robot_state)
+    return jsonify(res)
 
 
 @app.route('/gforce')
@@ -171,6 +254,13 @@ def sim_emergency():
         'response_ms': 5000
     })
     fall_detected_time = None
+
+    # Auto-trigger attached modules on emergency (e.g. EpiPen)
+    for arm in ['right_arm', 'left_arm']:
+        attached = registry._attached.get(arm)
+        if attached:
+            registry.execute(arm, action='emergency', robot_state={'emergency': True})
+
     return jsonify({'status': 'emergency'})
 
 
@@ -262,6 +352,12 @@ def run_ble():
                             fall_waiting = False
                             fall_detected_time = None
                             print("BLE: EMERGENCY")
+
+                            # Auto-trigger attached modules on emergency
+                            for arm in ['right_arm', 'left_arm']:
+                                attached = registry._attached.get(arm)
+                                if attached:
+                                    registry.execute(arm, action='emergency', robot_state={'emergency': True})
 
                     def on_gforce(sender, data):
                         raw = int.from_bytes(data[:2], byteorder='little')
