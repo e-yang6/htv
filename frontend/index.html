@@ -39,10 +39,7 @@
       margin-bottom: 16px;
     }
 
-    h1 {
-      font-size: 1.4rem;
-      font-weight: 600;
-    }
+    h1 { font-size: 1.4rem; font-weight: 600; }
 
     .status {
       display: flex;
@@ -61,6 +58,7 @@
 
     .status-dot.ok { background: var(--success); }
     .status-dot.alert { background: var(--danger); animation: pulse 0.5s infinite alternate; }
+    .status-dot.warn { background: #ffaa00; animation: pulse 1s infinite alternate; }
 
     @keyframes pulse {
       from { opacity: 1; }
@@ -78,7 +76,7 @@
       position: relative;
     }
 
-    video {
+    .camera-container img {
       width: 100%;
       height: 100%;
       object-fit: cover;
@@ -93,14 +91,6 @@
       justify-content: center;
       gap: 12px;
       color: var(--text-dim);
-    }
-
-    .camera-placeholder svg {
-      width: 48px;
-      height: 48px;
-      stroke: var(--text-dim);
-      fill: none;
-      stroke-width: 1.5;
     }
 
     .alert-banner {
@@ -150,6 +140,8 @@
     }
 
     button:hover { background: var(--border); }
+    button.danger { border-color: rgba(255, 74, 74, 0.4); color: var(--danger); }
+    button.danger:hover { background: rgba(255, 74, 74, 0.15); }
 
     .log {
       width: 100%;
@@ -176,40 +168,36 @@
   <header>
     <h1>Fall Detector</h1>
     <div class="status">
-      <span id="statusText">Camera off</span>
+      <span id="statusText">Connecting...</span>
       <div class="status-dot" id="statusDot"></div>
     </div>
   </header>
 
   <div class="camera-container">
-    <video id="video" autoplay playsinline></video>
-    <div class="camera-placeholder" id="placeholder">
-      <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-      <span>Click "Start Camera" below</span>
+    <img id="videoFeed" src="http://localhost:5000/video" alt="Camera feed">
+    <div class="camera-placeholder" id="placeholder" style="display:none;">
+      <span>Waiting for camera feed from server...</span>
     </div>
   </div>
 
   <div class="alert-banner" id="alertBanner"></div>
 
   <div class="controls">
-    <button id="cameraBtn" onclick="toggleCamera()">Start Camera</button>
-    <button id="bleBtn" onclick="connectBLE()">Connect BLE</button>
+    <button onclick="simulateEmergency()" class="danger">Simulate Emergency</button>
+    <button onclick="resetStatus()">Reset</button>
   </div>
 
   <div class="log" id="log"></div>
 
   <script>
-    const video = document.getElementById('video');
-    const placeholder = document.getElementById('placeholder');
     const statusText = document.getElementById('statusText');
     const statusDot = document.getElementById('statusDot');
     const alertBanner = document.getElementById('alertBanner');
-    const cameraBtn = document.getElementById('cameraBtn');
     const logEl = document.getElementById('log');
+    const videoFeed = document.getElementById('videoFeed');
+    const placeholder = document.getElementById('placeholder');
 
-    let cameraStream = null;
-    let bleDevice = null;
-    let bleChar = null;
+    let lastState = '';
 
     function log(msg, type = '') {
       const time = new Date().toLocaleTimeString();
@@ -219,94 +207,69 @@
       logEl.prepend(entry);
     }
 
-    async function toggleCamera() {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(t => t.stop());
-        cameraStream = null;
-        video.srcObject = null;
-        placeholder.style.display = 'flex';
-        cameraBtn.textContent = 'Start Camera';
-        setStatus('Camera off', '');
-        log('Camera stopped');
-        return;
-      }
+    videoFeed.onerror = () => {
+      videoFeed.style.display = 'none';
+      placeholder.style.display = 'flex';
+    };
 
+    videoFeed.onload = () => {
+      videoFeed.style.display = 'block';
+      placeholder.style.display = 'none';
+    };
+
+    async function pollStatus() {
       try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: 1280, height: 720 }
-        });
-        video.srcObject = cameraStream;
-        placeholder.style.display = 'none';
-        cameraBtn.textContent = 'Stop Camera';
-        setStatus('Monitoring', 'ok');
-        log('Camera started', 'ok');
+        const res = await fetch('http://localhost:5000/status');
+        const data = await res.json();
+
+        let newState = '';
+        if (data.emergency) {
+          newState = 'emergency';
+          alertBanner.className = 'alert-banner emergency';
+          alertBanner.style.display = 'block';
+          alertBanner.textContent = 'EMERGENCY — Robot seeking nearest person (' + (data.direction || 'scanning') + ')';
+          statusText.textContent = 'EMERGENCY';
+          statusDot.className = 'status-dot alert';
+        } else if (data.fall_waiting) {
+          newState = 'waiting';
+          alertBanner.className = 'alert-banner warning';
+          alertBanner.style.display = 'block';
+          alertBanner.textContent = 'Fall Detected — Waiting for response...';
+          statusText.textContent = 'Fall detected';
+          statusDot.className = 'status-dot warn';
+        } else {
+          newState = 'ok';
+          alertBanner.style.display = 'none';
+          statusText.textContent = data.ble_connected ? 'Monitoring' : 'No BLE';
+          statusDot.className = 'status-dot' + (data.ble_connected ? ' ok' : '');
+        }
+
+        if (newState !== lastState) {
+          if (newState === 'emergency') log('EMERGENCY — no response, robot deployed!', 'alert');
+          else if (newState === 'waiting') log('Fall detected — waiting for user response', 'warn');
+          else if (lastState === 'emergency') log('Emergency cleared', 'ok');
+          else if (lastState === 'waiting') log('Fall cancelled', 'ok');
+          lastState = newState;
+        }
       } catch (e) {
-        log('Camera error: ' + e.message, 'alert');
+        statusText.textContent = 'Server offline';
+        statusDot.className = 'status-dot';
       }
     }
 
-    async function connectBLE() {
-      if (!navigator.bluetooth) {
-        log('Web Bluetooth not supported — use Chrome or Edge', 'alert');
-        return;
-      }
-
-      try {
-        log('Searching for FallDetector...');
-        bleDevice = await navigator.bluetooth.requestDevice({
-          filters: [{ name: 'FallDetector' }],
-          optionalServices: ['19b10000-e8f2-537e-4f6c-d104768a1214']
-        });
-
-        bleDevice.addEventListener('gattserverdisconnected', () => {
-          log('BLE disconnected', 'warn');
-          setStatus(cameraStream ? 'Camera only' : 'Disconnected', '');
-        });
-
-        log('Connecting...');
-        const server = await bleDevice.gatt.connect();
-        const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
-        bleChar = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
-
-        await bleChar.startNotifications();
-        bleChar.addEventListener('characteristicvaluechanged', onFallData);
-
-        log('Connected to FallDetector', 'ok');
-        setStatus('Monitoring', 'ok');
-      } catch (e) {
-        log('BLE error: ' + e.message, 'alert');
-      }
+    async function simulateEmergency() {
+      await fetch('http://localhost:5000/simulate/emergency');
+      log('Simulated emergency triggered', 'alert');
     }
 
-    function onFallData(event) {
-      const value = event.target.value.getUint8(0);
-
-      if (value === 0) {
-        alertBanner.style.display = 'none';
-        alertBanner.className = 'alert-banner';
-        setStatus('Monitoring', 'ok');
-        log('Status: OK', 'ok');
-      } else if (value === 1) {
-        alertBanner.className = 'alert-banner warning';
-        alertBanner.style.display = 'block';
-        alertBanner.textContent = 'Fall Detected — Waiting for response...';
-        setStatus('Fall detected', 'alert');
-        log('FALL DETECTED — waiting for user response', 'warn');
-      } else if (value === 2) {
-        alertBanner.className = 'alert-banner emergency';
-        alertBanner.style.display = 'block';
-        alertBanner.textContent = 'EMERGENCY — No response — Sending robot!';
-        setStatus('EMERGENCY', 'alert');
-        log('EMERGENCY ALERT — no response from user', 'alert');
-      }
+    async function resetStatus() {
+      await fetch('http://localhost:5000/simulate/reset');
+      log('Reset to monitoring', 'ok');
     }
 
-    function setStatus(text, state) {
-      statusText.textContent = text;
-      statusDot.className = 'status-dot' + (state ? ' ' + state : '');
-    }
-
-    log('Fall Detector ready');
+    setInterval(pollStatus, 500);
+    pollStatus();
+    log('Dashboard loaded — connecting to server...');
   </script>
 </body>
 </html>
