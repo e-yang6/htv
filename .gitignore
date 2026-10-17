@@ -1,0 +1,17 @@
+# Build outputs
+*.obj
+*.exe
+*.o
+*.a
+*.pdb
+*.ilk
+
+# Visual Studio / IDE temporary files
+.vs/
+*.user
+
+# venv
+.venv/
+
+__pycache__/
+*.pt
