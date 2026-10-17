@@ -103,9 +103,9 @@ def generate_frames():
                     count += 1
                 x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
                 conf = float(box.conf[0])
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 150, 0), 2)
                 cv2.putText(frame, f"person {conf:.0%}", (x1, y1 - 8),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 150, 0), 2)
         person_count = count
 
         if emergency:

@@ -1,4 +1,4 @@
-# IRON HEART — React + Tailwind web app
+# Ironheart — React + Tailwind web app
 
 ## Requirements
 - Node.js 18+ recommended

@@ -1,9 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
-import {
-  Activity, Camera, ChevronRight, CircleDot, Cpu,
-  Heart, Radar, ShieldCheck, Signal, Terminal, Zap, AlertTriangle
-} from "lucide-react";
+import { Camera, Terminal } from "lucide-react";
 import "./styles.css";
 
 const API = "http://localhost:5001";
@@ -12,6 +9,28 @@ const BLE_SERVICE_UUID = "19b10000-e8f2-537e-4f6c-d104768a1214";
 const FALL_CHAR_UUID = "19b10001-e8f2-537e-4f6c-d104768a1214";
 const GFORCE_CHAR_UUID = "19b10002-e8f2-537e-4f6c-d104768a1214";
 const MAX_G_POINTS = 60;
+
+const TRACES = [
+  "M200 150 V10",
+  "M200 150 V90 H55 V10",
+  "M200 150 V90 H135 V10",
+  "M200 150 V100 H290 V10",
+  "M200 150 V100 H350 V50 H395",
+  "M200 150 H310 V70 H395",
+  "M200 150 H395",
+  "M200 150 H310 V230 H395",
+  "M200 150 V290",
+  "M200 150 V210 H110 V290",
+  "M200 150 V210 H300 V290",
+  "M200 150 H90 V60 H5",
+  "M200 150 H5",
+  "M200 150 H90 V245 H5",
+];
+const PADS = [
+  [200,10],[55,10],[135,10],[290,10],[395,50],
+  [395,70],[395,150],[395,230],[200,290],
+  [110,290],[300,290],[5,60],[5,150],[5,245],
+];
 
 function GForceChart({ data, max = 4 }) {
   const w = 280, h = 80, pad = 2;
@@ -226,97 +245,64 @@ function App() {
     <div className="min-h-screen bg-[#090b0f] text-zinc-100">
       <div className="mx-auto min-h-screen max-w-6xl px-3 py-3 sm:px-6 sm:py-6">
 
-        <header className="mb-4 flex items-center justify-between gap-3 px-1 sm:mb-6">
-          <div>
-            <div className="flex items-center gap-2">
-              <div className="brand-mark"><Heart size={16} strokeWidth={2.3} /></div>
-              <span className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRON HEART</span>
-              <span className="hidden rounded border border-cyan/30 px-2 py-1 font-mono text-[9px] tracking-widest text-cyan sm:inline-flex">SYS.01</span>
-            </div>
-            <p className="micro mt-2 pl-7">NEURAL INTERFACE / CONTROL SYSTEM</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button onClick={toggleSeek} disabled={robotLabel.disabled} className={`action-button px-3 py-2 text-[10px] ${!robotOnline ? "opacity-40" : ""}`}>
-              <Radar size={13} /> {robotLabel.text}
-            </button>
-            <button onClick={connectBLE} className={`action-button px-3 py-2 text-[10px] ${bleConnected ? "border-emerald-400/40 text-emerald-300" : bleConnecting ? "border-amber-400/40 text-amber-300" : ""}`}>
-              <Signal size={13} /> {bleConnected ? "BLE Connected" : bleConnecting ? "Scanning..." : "Connect BLE"}
-            </button>
-            <div className="flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.06] px-3 py-2"
-              style={banner?.type === "crit" ? { borderColor: "rgba(239,68,68,.3)", background: "rgba(239,68,68,.08)" } : banner?.type === "warn" ? { borderColor: "rgba(245,158,11,.3)", background: "rgba(245,158,11,.08)" } : !backendOnline && !bleConnected ? { borderColor: "rgba(82,82,91,.3)", background: "rgba(82,82,91,.06)" } : {}}>
-              <span className="status-dot" style={banner?.type === "crit" ? { background: "#ef4444", boxShadow: "0 0 10px rgba(239,68,68,.5)" } : banner?.type === "warn" ? { background: "#f59e0b", boxShadow: "0 0 10px rgba(245,158,11,.5)" } : !backendOnline && !bleConnected ? { background: "#52525b", boxShadow: "none" } : {}} />
-              <span className={`text-[10px] font-semibold tracking-[0.16em] ${banner?.type === "crit" ? "text-red-400" : banner?.type === "warn" ? "text-amber-300" : !backendOnline && !bleConnected ? "text-zinc-500" : "text-emerald-300"}`}>
-                {banner?.type === "crit" ? "EMERGENCY" : banner?.type === "warn" ? "FALL DETECTED" : !backendOnline && !bleConnected ? "OFFLINE" : "STABLE"}
-              </span>
-            </div>
-          </div>
+        <header className="mb-4 px-1 sm:mb-6">
+          <span className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRONHEART</span>
         </header>
 
         {banner && (
-          <div className={`mb-4 rounded-lg border px-4 py-3 text-center text-sm font-semibold ${banner.type === "crit" ? "border-red-500/30 bg-red-500/10 text-red-400" : "border-amber-500/30 bg-amber-500/10 text-amber-300"}`}>
-            {banner.type === "crit" && <AlertTriangle size={14} className="mr-2 inline" />}
+          <div className={`mb-4 rounded-lg px-4 py-3 text-center text-sm ${banner.type === "crit" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-300"}`}>
             {banner.text}
           </div>
         )}
 
-        <main className="grid gap-4 lg:grid-cols-[1.15fr_.85fr] lg:gap-5">
+        <main className="grid gap-4 lg:grid-cols-2 lg:gap-5">
+          {/* LEFT — Heart + Circuit Board */}
+          <section className="panel relative flex items-center justify-center p-4 sm:p-5">
+            <svg className="circuit-svg" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice">
+              <defs>
+                <filter id="glow"><feGaussianBlur stdDeviation="3"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              </defs>
+              {TRACES.map((d, i) => <path key={"b"+i} d={d} className="cb-base" />)}
+              {TRACES.map((d, i) => <path key={"p"+i} d={d} pathLength="100" className="cb-pulse" />)}
+              {PADS.map(([x,y], i) => <React.Fragment key={"t"+i}>
+                <circle cx={x} cy={y} r="3" className="cb-pad" />
+                <circle cx={x} cy={y} r="3" className="cb-pad-glow" />
+              </React.Fragment>)}
+              <circle cx="200" cy="150" r="5" className="cb-center" />
+            </svg>
+            <div className="heart-stage">
+              <div className="heart-aura" />
+              <img src="/heart.png" alt="" className="heart-art" />
+            </div>
+          </section>
+
+          {/* RIGHT — Camera */}
           <section className="panel overflow-hidden">
             <div className="flex border-b border-line">
               <button onClick={() => setTab("camera")} className={`tab ${tab === "camera" ? "tab-active" : ""}`}><Camera size={14} /> Camera</button>
               <button onClick={() => setTab("log")} className={`tab ${tab === "log" ? "tab-active" : ""}`}><Terminal size={14} /> Falls</button>
             </div>
-
             {tab === "camera" ? (
-              <div className="p-4 sm:p-5">
-                <div className="relative overflow-hidden rounded-lg border border-[#3b414b]" style={{ minHeight: 220 }}>
-                  {localCamera ? (
-                    <video ref={videoRef} autoPlay playsInline className="w-full" />
-                  ) : videoSrc ? (
-                    <img src={videoSrc} alt="" className="w-full" onError={() => setFeedError(true)} />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center gap-3 py-16 text-zinc-500">
-                      <Camera size={24} /><span className="text-xs">Backend video stream offline</span>
-                    </div>
-                  )}
-                  {(videoSrc || localCamera) && (
-                    <div className="live-pill" style={{ position: "absolute", zIndex: 4, left: 10, top: 10 }}>
-                      <span className="live-dot" /> LIVE
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-4 flex items-center justify-between border-b border-[#242832] pb-3">
-                  <span className="micro">G-FORCE</span>
-                  <span className="gforce" style={currentG > 1.5 ? { color: "#ef4444" } : {}}>{currentG.toFixed(2)}<span className="text-2xl">g</span></span>
-                </div>
-                <div className="mt-3"><GForceChart data={gforceHistory.slice(-MAX_G_POINTS)} /></div>
-
-                <div className="mt-4 grid grid-cols-3 gap-3">
-                  <Stat label="PEOPLE" value={String(personCount).padStart(2, "0")} hint="detected" />
-                  <Stat label="ACTIVITY" value={activityLevel} hint="level" />
-                  <Stat label="BLE" value={bleLabel} hint={bleConnected ? "Web BLE" : backendOnline ? "server" : "—"} accent={bleConnected || status?.ble_connected} />
-                </div>
-                <div className="mt-3 grid grid-cols-3 gap-3">
-                  <Stat label="FALLS" value={String(fallCount).padStart(2, "0")} hint="total" accent={fallCount > 0} />
-                  <Stat label="AVG RESPONSE" value={avgResp} hint="cancelled" />
-                  <Stat label="ROBOT" value={robotOnline ? "Online" : "Offline"} hint={robotStatus?.mode || "—"} accent={robotOnline} />
-                </div>
-
-                <div className="mt-5 flex gap-2">
-                  <button className="action-button flex-1 py-2" onClick={toggleWebcam}><Camera size={14} /> {localCamera ? "STOP CAM" : "LOCAL CAM"}</button>
-                  <button className="action-button flex-1 py-2" onClick={() => fetch(API + "/simulate/fall").catch(() => {})}><Activity size={14} /> SIM FALL</button>
-                  <button className="action-button flex-1 py-2" onClick={() => fetch(API + "/simulate/reset").catch(() => {})}><ShieldCheck size={14} /> RESET</button>
-                </div>
+              <div className="relative p-3" style={{ minHeight: 280 }}>
+                {localCamera ? (
+                  <video ref={videoRef} autoPlay playsInline className="h-full w-full object-cover" />
+                ) : videoSrc ? (
+                  <img src={videoSrc} alt="" className="w-full" onError={() => setFeedError(true)} />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center gap-3 py-24 text-zinc-500">
+                    <Camera size={24} /><span className="text-xs">Backend video stream offline</span>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="p-4 sm:p-5">
                 <div className="mb-5 flex items-center justify-between">
-                  <div><p className="text-sm font-medium">Fall history</p><p className="micro mt-1">LIVE EVENT STREAM</p></div>
-                  <span className="micro">{String(fallCount).padStart(2, "0")} EVENTS</span>
+                  <p className="text-sm font-medium">Fall history</p>
+                  <span className="micro">{fallCount} events</span>
                 </div>
                 {activeFalls.length === 0 ? (
                   <div className="rounded-lg border border-line bg-black/20 p-6 text-center">
-                    <div className="flex items-center justify-center gap-2 text-xs text-zinc-500"><ShieldCheck size={14} className="text-cyan" /> No falls detected</div>
+                    <div className="text-xs text-zinc-500">No falls detected</div>
                   </div>
                 ) : (
                   <div className="space-y-0">
@@ -334,72 +320,39 @@ function App() {
                     ))}
                   </div>
                 )}
-                <div className="mt-5 flex gap-2">
-                  <button className="action-button flex-1 py-2" onClick={() => fetch(API + "/simulate/fall").catch(() => {})}><Activity size={14} /> SIM FALL</button>
-                  <button className="action-button flex-1 py-2" onClick={() => fetch(API + "/simulate/emergency").catch(() => {})}><AlertTriangle size={14} /> SIM EMERGENCY</button>
-                  <button className="action-button flex-1 py-2" onClick={() => fetch(API + "/simulate/reset").catch(() => {})}><ShieldCheck size={14} /> RESET</button>
-                </div>
               </div>
             )}
           </section>
 
-          <aside className="flex flex-col gap-4">
-            <section className="panel p-4 sm:p-5">
-              <div className="mb-4 flex items-center justify-between">
-                <div><p className="text-sm font-medium">System status</p><p className="micro mt-1">CONNECTION OVERVIEW</p></div>
-                <Cpu size={17} className="text-cyan" />
-              </div>
-              {[
-                ["Backend server", backendOnline ? "Online" : "Offline", backendOnline ? 100 : 0],
-                ["BLE link", bleLabel, bleConnected ? 100 : status?.ble_connected ? 80 : 0],
-                ["Robot bridge", robotOnline ? "Online" : "Offline", robotOnline ? 100 : 0],
-                ["Camera feed", localCamera ? "Local" : backendOnline ? "YOLO" : "Offline", localCamera || backendOnline ? 100 : 0],
-              ].map(([label, value, pct]) => (
-                <div key={label} className="mb-4 last:mb-0">
-                  <div className="mb-2 flex justify-between gap-3 text-xs"><span className="text-zinc-400">{label}</span><span className="font-mono text-zinc-200">{value}</span></div>
-                  <div className="h-1 overflow-hidden rounded-full bg-zinc-800"><div className={`h-full ${pct > 0 ? "bg-cyan/80" : "bg-zinc-700"}`} style={{ width: `${pct}%` }} /></div>
-                </div>
-              ))}
-            </section>
-
-            <section className="panel p-4 sm:p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-cyan/20 bg-cyan/[0.07]"><Radar size={18} className="text-cyan" /></div>
-                <div className="min-w-0 flex-1"><p className="text-sm font-medium">Tracking</p><p className="micro mt-1">{backendOnline ? "YOLO PERSON DETECTION" : "OFFLINE"}</p></div>
-                <span className="status-dot" style={!backendOnline ? { background: "#52525b", boxShadow: "none" } : {}} />
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="rounded-md border border-line bg-black/20 p-3"><p className="micro">TARGETS</p><p className="mt-2 font-mono text-xl">{String(personCount).padStart(2, "0")}</p></div>
-                <div className="rounded-md border border-line bg-black/20 p-3"><p className="micro">G-FORCE</p><p className="mt-2 flex items-center gap-1 font-mono text-xl text-cyan"><Zap size={15} /> {currentG.toFixed(1)}</p></div>
-              </div>
-            </section>
-
-            <section className="panel p-4 sm:p-5">
-              <div className="mb-4 flex items-center justify-between">
-                <div><p className="text-sm font-medium">Quick actions</p><p className="micro mt-1">CONTROLS</p></div>
-                <Activity size={17} className="text-cyan" />
-              </div>
-              <div className="flex flex-col gap-2">
-                <button className="action-button w-full py-2.5" onClick={connectBLE}>
-                  <Signal size={14} /> {bleConnected ? "BLE CONNECTED" : "CONNECT BLE"} <ChevronRight size={14} />
-                </button>
-                <button className="action-button w-full py-2.5" onClick={toggleSeek} disabled={robotLabel.disabled} style={!robotOnline ? { opacity: 0.4 } : {}}>
-                  <Radar size={14} /> {robotLabel.text.toUpperCase()} <ChevronRight size={14} />
-                </button>
-              </div>
-            </section>
-
-            <div className="flex items-center justify-between px-1 py-1">
-              <span className="micro flex items-center gap-2"><CircleDot size={11} className="text-cyan" /> {backendOnline || bleConnected ? "SYSTEM ONLINE" : "SYSTEM OFFLINE"}</span>
-              <span className="micro">BUILD 01.07.26</span>
+          {/* BOTTOM — Stats spanning full width */}
+          <section className="panel p-4 sm:p-5 lg:col-span-2">
+            <div className="flex items-center justify-between border-b border-[#242832] pb-3">
+              <span className="micro">G-FORCE</span>
+              <span className="gforce" style={currentG > 1.5 ? { color: "#ef4444" } : {}}>{currentG.toFixed(2)}<span className="text-2xl">g</span></span>
             </div>
-          </aside>
+            <div><GForceChart data={gforceHistory.slice(-MAX_G_POINTS)} /></div>
+
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+              <Stat label="PEOPLE" value={String(personCount).padStart(2, "0")} hint="detected" />
+              <Stat label="ACTIVITY" value={activityLevel} hint="level" />
+              <Stat label="BLE" value={bleLabel} hint={bleConnected ? "Web BLE" : backendOnline ? "server" : "—"} accent={bleConnected || status?.ble_connected} />
+              <Stat label="FALLS" value={String(fallCount).padStart(2, "0")} hint="total" accent={fallCount > 0} />
+              <Stat label="AVG RESPONSE" value={avgResp} hint="cancelled" />
+              <Stat label="ROBOT" value={robotOnline ? "Online" : "Offline"} hint={robotStatus?.mode || "—"} accent={robotOnline} />
+            </div>
+
+            <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-6">
+              <button className="action-button py-2" onClick={connectBLE}>{bleConnected ? "BLE OK" : "CONNECT BLE"}</button>
+              <button className="action-button py-2" onClick={toggleWebcam}>{localCamera ? "STOP CAM" : "LOCAL CAM"}</button>
+              <button className="action-button py-2" onClick={() => fetch(API + "/simulate/fall").catch(() => {})}>SIM FALL</button>
+              <button className="action-button py-2" onClick={() => fetch(API + "/simulate/emergency").catch(() => {})}>SIM EMERGENCY</button>
+              <button className="action-button py-2" onClick={() => fetch(API + "/simulate/reset").catch(() => {})}>RESET</button>
+              <button className="action-button py-2" onClick={toggleSeek} disabled={robotLabel.disabled} style={!robotOnline ? { opacity: 0.4 } : {}}>ROBOT</button>
+            </div>
+          </section>
+
         </main>
 
-        <footer className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-line/70 px-1 pt-4">
-          <span className="micro">IRON HEART INTERFACE © 2026</span>
-          <span className="micro flex items-center gap-2"><Zap size={11} className="text-cyan" /> DESIGNED FOR THE NEXT GENERATION</span>
-        </footer>
       </div>
     </div>
   );
