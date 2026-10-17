@@ -15,3 +15,10 @@ python -m http.server 8080
 ```
 
 Open http://localhost:8080
+
+# Frontend Web
+```
+cd iron-heart-web
+npm i
+npm run dev
+```
