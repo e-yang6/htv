@@ -1,0 +1,10 @@
+{
+  "autodeskProduct": "Fusion",
+  "type": "script",
+  "author": "",
+  "description": {
+    "": "EpiPen holder module with snap-fit clip for Meccanoid 2.0 arm"
+  },
+  "supportedOS": "windows|mac",
+  "editEnabled": true
+}
