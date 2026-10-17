@@ -295,5 +295,5 @@ if __name__ == "__main__":
     ble_thread = threading.Thread(target=start_ble_thread, daemon=True)
     ble_thread.start()
 
-    print("Server running at http://localhost:5000")
-    app.run(host='0.0.0.0', port=5000, threaded=True)
+    print("Server running at http://localhost:5001")
+    app.run(host='0.0.0.0', port=5001, threaded=True)
