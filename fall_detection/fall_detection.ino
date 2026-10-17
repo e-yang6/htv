@@ -6,51 +6,51 @@
 #include <ArduinoBLE.h>
 
 // --- Tunable thresholds ---
-// Freefall: when total G drops below this, you're likely falling
-const float FREEFALL_THRESHOLD = 0.4;   // in g (normal standing = 1.0g)
-// Impact: when total G spikes above this after freefall, you hit something
-const float IMPACT_THRESHOLD = 2.5;     // in g
-// How long freefall must last to count (filters out bumps)
-const unsigned long FREEFALL_MIN_MS = 80;
-// Window after freefall to look for impact
+const float FREEFALL_THRESHOLD = 0.6;
+const float IMPACT_THRESHOLD = 1.5;
+const unsigned long FREEFALL_MIN_MS = 50;
 const unsigned long IMPACT_WINDOW_MS = 500;
-// Cooldown after a detected fall before we can detect another
 const unsigned long COOLDOWN_MS = 5000;
+const unsigned long CONFIRM_WINDOW_MS = 5000;
+
+// Double-tap to cancel: two taps within this window
+const float TAP_THRESHOLD = 1.8;
+const unsigned long DOUBLE_TAP_WINDOW_MS = 800;
 
 // --- State machine ---
-enum State { MONITORING, FREEFALL, IMPACT_WAIT, FALL_DETECTED, COOLDOWN };
+// BLE values: 0 = normal, 1 = fall detected (waiting), 2 = confirmed emergency
+enum State { MONITORING, FREEFALL, IMPACT_WAIT, FALL_DETECTED, ALERT, COOLDOWN };
 State state = MONITORING;
 unsigned long stateStartTime = 0;
 
+// Double-tap tracking
+unsigned long firstTapTime = 0;
+bool waitingForSecondTap = false;
+
 // --- BLE setup ---
 BLEService fallService("19B10000-E8F2-537E-4F6C-D104768A1214");
-// 0 = normal, 1 = fall detected
 BLEByteCharacteristic fallChar("19B10001-E8F2-537E-4F6C-D104768A1214",
                                 BLERead | BLENotify);
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial && millis() < 3000); // wait up to 3s for serial monitor
+  while (!Serial && millis() < 3000);
 
-  // Onboard LED for visual feedback
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
+  pinMode(LEDR, OUTPUT);
+  pinMode(LEDG, OUTPUT);
+  pinMode(LEDB, OUTPUT);
+  digitalWrite(LEDR, HIGH);
+  digitalWrite(LEDG, HIGH);
+  digitalWrite(LEDB, HIGH);
 
-  // Start IMU
   if (!IMU.begin()) {
     Serial.println("ERROR: IMU failed to start");
-    while (1) {
-      digitalWrite(LED_BUILTIN, HIGH);
-      delay(100);
-      digitalWrite(LED_BUILTIN, LOW);
-      delay(100);
-    }
+    while (1);
   }
   Serial.print("Accelerometer sample rate: ");
   Serial.print(IMU.accelerationSampleRate());
   Serial.println(" Hz");
 
-  // Start BLE
   if (!BLE.begin()) {
     Serial.println("ERROR: BLE failed to start");
     while (1);
@@ -64,7 +64,8 @@ void setup() {
   BLE.advertise();
 
   Serial.println("Fall detector running. Advertising as 'FallDetector' over BLE.");
-  Serial.println("Open Serial Monitor to see live G-force readings.");
+  Serial.println("BLE values: 0=normal, 1=fall(waiting), 2=EMERGENCY");
+  Serial.println("Double-tap chest piece to cancel a fall alert.");
   Serial.println("---");
 }
 
@@ -77,7 +78,6 @@ float getTotalG() {
 }
 
 void loop() {
-  // Keep BLE connection alive
   BLE.poll();
 
   float totalG = getTotalG();
@@ -96,13 +96,11 @@ void loop() {
 
     case FREEFALL:
       if (totalG >= FREEFALL_THRESHOLD) {
-        // Freefall ended — was it long enough?
         if (now - stateStartTime >= FREEFALL_MIN_MS) {
           state = IMPACT_WAIT;
           stateStartTime = now;
           Serial.println("Freefall ended, watching for impact...");
         } else {
-          // Too short, probably just a bump
           state = MONITORING;
         }
       }
@@ -110,37 +108,85 @@ void loop() {
 
     case IMPACT_WAIT:
       if (totalG > IMPACT_THRESHOLD) {
-        // Impact detected after freefall = fall
         state = FALL_DETECTED;
         stateStartTime = now;
+        waitingForSecondTap = false;
         Serial.println("=============================");
         Serial.print("FALL DETECTED! Impact G=");
         Serial.println(totalG, 2);
+        Serial.println("Double-tap chest piece to cancel!");
         Serial.println("=============================");
 
-        // Signal over BLE
         fallChar.writeValue(1);
+        BLE.poll();
+        BLE.poll();
+        BLE.poll();
 
-        // Flash LED rapidly
-        for (int i = 0; i < 10; i++) {
-          digitalWrite(LED_BUILTIN, HIGH);
-          delay(50);
-          digitalWrite(LED_BUILTIN, LOW);
-          delay(50);
-        }
+        digitalWrite(LEDR, LOW);
       } else if (now - stateStartTime > IMPACT_WINDOW_MS) {
-        // No impact in time window — false alarm
         state = MONITORING;
         Serial.println("No impact detected, resuming monitoring.");
       }
       break;
 
-    case FALL_DETECTED:
-      // Stay in this state briefly, then cooldown
-      if (now - stateStartTime > 1000) {
+    case FALL_DETECTED: {
+      // Blink red while waiting
+      if ((now / 250) % 2 == 0) {
+        digitalWrite(LEDR, LOW);
+      } else {
+        digitalWrite(LEDR, HIGH);
+      }
+
+      // Double-tap detection
+      if (totalG > TAP_THRESHOLD) {
+        if (!waitingForSecondTap) {
+          firstTapTime = now;
+          waitingForSecondTap = true;
+          Serial.println("First tap detected...");
+        } else if (now - firstTapTime > 150 && now - firstTapTime < DOUBLE_TAP_WINDOW_MS) {
+          // Second tap — user is OK
+          Serial.println("Double-tap! Fall cancelled by user.");
+          state = COOLDOWN;
+          stateStartTime = now;
+          waitingForSecondTap = false;
+          digitalWrite(LEDR, HIGH);
+          digitalWrite(LEDG, LOW);
+          delay(300);
+          digitalWrite(LEDG, HIGH);
+          fallChar.writeValue(0);
+          BLE.poll();
+        }
+      }
+
+      // Reset if first tap timed out
+      if (waitingForSecondTap && now - firstTapTime > DOUBLE_TAP_WINDOW_MS) {
+        waitingForSecondTap = false;
+        Serial.println("Tap timed out, waiting for double-tap...");
+      }
+
+      // 5 seconds no double-tap — real emergency
+      if (now - stateStartTime > CONFIRM_WINDOW_MS) {
+        state = ALERT;
+        stateStartTime = now;
+        Serial.println("!!! NO RESPONSE — SENDING EMERGENCY ALERT !!!");
+
+        fallChar.writeValue(2);
+        BLE.poll();
+        BLE.poll();
+        BLE.poll();
+
+        digitalWrite(LEDR, LOW);
+      }
+      break;
+    }
+
+    case ALERT:
+      if (now - stateStartTime > 3000) {
         state = COOLDOWN;
         stateStartTime = now;
-        fallChar.writeValue(0); // reset BLE signal
+        digitalWrite(LEDR, HIGH);
+        fallChar.writeValue(0);
+        BLE.poll();
         Serial.println("Cooldown...");
       }
       break;
@@ -162,5 +208,5 @@ void loop() {
     Serial.println(totalG, 2);
   }
 
-  delay(10); // ~100Hz sampling
+  delay(10);
 }
