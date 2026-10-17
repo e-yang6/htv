@@ -4,272 +4,235 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fall Detector</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <style>
     :root {
-      --bg: #0a0a0f;
-      --surface: #141420;
-      --border: #2a2a3a;
-      --text: #e0e0e8;
-      --text-dim: #888894;
-      --accent: #4a9eff;
-      --danger: #ff4a4a;
-      --success: #4aff7a;
+      --bg: #fff;
+      --surface: #f7f7f8;
+      --border: #e5e5e5;
+      --text: #111;
+      --dim: #777;
+      --red: #d00;
+      --green: #1a8d1a;
+      --amber: #b86e00;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #111;
+        --surface: #1a1a1a;
+        --border: #2a2a2a;
+        --text: #ddd;
+        --dim: #888;
+        --red: #e55;
+        --green: #5b5;
+        --amber: #da3;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #111;
+      --surface: #1a1a1a;
+      --border: #2a2a2a;
+      --text: #ddd;
+      --dim: #888;
+      --red: #e55;
+      --green: #5b5;
+      --amber: #da3;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      padding: 24px 16px;
+      font-size: 14px;
+      line-height: 1.5;
     }
 
-    header {
-      width: 100%;
-      max-width: 720px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 0;
-      margin-bottom: 16px;
-    }
+    .container { max-width: 960px; margin: 0 auto; }
 
-    h1 { font-size: 1.4rem; font-weight: 600; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    h1 { font-size: 18px; font-weight: 600; }
+    .conn { font-size: 13px; color: var(--dim); }
+    .conn .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); margin-right: 4px; vertical-align: middle; }
+    .conn .dot.on { background: var(--green); }
 
-    .status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 0.85rem;
-      color: var(--text-dim);
-    }
+    .grid { display: grid; grid-template-columns: 1fr 280px; gap: 20px; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
 
-    .status-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--text-dim);
-    }
+    .video-wrap { position: relative; background: var(--surface); border-radius: 6px; overflow: hidden; }
+    .video-wrap img { width: 100%; display: block; }
+    .banner { display: none; position: absolute; bottom: 0; left: 0; right: 0; padding: 10px; text-align: center; font-size: 13px; font-weight: 600; }
+    .banner.warn { display: block; background: rgba(184,110,0,0.85); color: #fff; }
+    .banner.crit { display: block; background: rgba(221,0,0,0.85); color: #fff; }
 
-    .status-dot.ok { background: var(--success); }
-    .status-dot.alert { background: var(--danger); animation: pulse 0.5s infinite alternate; }
-    .status-dot.warn { background: #ffaa00; animation: pulse 1s infinite alternate; }
+    .panel { display: flex; flex-direction: column; gap: 16px; }
 
-    @keyframes pulse {
-      from { opacity: 1; }
-      to { opacity: 0.3; }
-    }
+    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+    .metric { background: var(--bg); padding: 12px; }
+    .metric-label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
+    .metric-val { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+    .metric-val.red { color: var(--red); }
+    .metric-val.green { color: var(--green); }
+    .metric-val.amber { color: var(--amber); }
 
-    .camera-container {
-      width: 100%;
-      max-width: 720px;
-      aspect-ratio: 4 / 3;
-      background: var(--surface);
+    .chart-box { border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+    .chart-box canvas { width: 100% !important; height: 120px !important; }
+    .chart-label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+
+    .log-section { grid-column: 1 / -1; margin-top: 4px; }
+    .log-label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 6px 8px; border-bottom: 2px solid var(--border); color: var(--dim); font-weight: 500; }
+    td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    .tag { font-size: 12px; font-weight: 500; }
+    .tag.cancelled { color: var(--green); }
+    .tag.emergency { color: var(--red); }
+    .empty-row { color: var(--dim); text-align: center; padding: 16px 8px; }
+
+    .actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 4px; }
+    .actions button {
+      padding: 7px 14px;
       border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
-      position: relative;
-    }
-
-    .camera-container img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .camera-placeholder {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      color: var(--text-dim);
-    }
-
-    .alert-banner {
-      display: none;
-      width: 100%;
-      max-width: 720px;
-      margin-top: 16px;
-      padding: 16px 20px;
-      border-radius: 12px;
-      font-weight: 600;
-      text-align: center;
-      font-size: 1.1rem;
-    }
-
-    .alert-banner.warning {
-      display: block;
-      background: rgba(255, 165, 0, 0.15);
-      border: 1px solid rgba(255, 165, 0, 0.4);
-      color: #ffaa00;
-    }
-
-    .alert-banner.emergency {
-      display: block;
-      background: rgba(255, 74, 74, 0.15);
-      border: 1px solid rgba(255, 74, 74, 0.4);
-      color: var(--danger);
-    }
-
-    .controls {
-      width: 100%;
-      max-width: 720px;
-      margin-top: 16px;
-      display: flex;
-      gap: 12px;
-    }
-
-    button {
-      flex: 1;
-      padding: 12px 20px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text);
-      font-size: 0.9rem;
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--dim);
+      font-size: 12px;
       cursor: pointer;
-      transition: background 0.15s;
     }
-
-    button:hover { background: var(--border); }
-    button.danger { border-color: rgba(255, 74, 74, 0.4); color: var(--danger); }
-    button.danger:hover { background: rgba(255, 74, 74, 0.15); }
-
-    .log {
-      width: 100%;
-      max-width: 720px;
-      margin-top: 16px;
-      padding: 16px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      max-height: 200px;
-      overflow-y: auto;
-      font-family: 'Cascadia Code', 'Fira Code', monospace;
-      font-size: 0.8rem;
-      color: var(--text-dim);
-    }
-
-    .log-entry { padding: 2px 0; }
-    .log-entry.alert { color: var(--danger); }
-    .log-entry.warn { color: #ffaa00; }
-    .log-entry.ok { color: var(--success); }
+    .actions button:hover { background: var(--surface); color: var(--text); }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Fall Detector</h1>
-    <div class="status">
-      <span id="statusText">Connecting...</span>
-      <div class="status-dot" id="statusDot"></div>
-    </div>
-  </header>
+  <div class="container">
+    <header>
+      <h1>Fall Detector</h1>
+      <div class="conn"><span class="dot" id="dot"></span><span id="connText">Connecting</span></div>
+    </header>
 
-  <div class="camera-container">
-    <img id="videoFeed" src="http://localhost:5000/video" alt="Camera feed">
-    <div class="camera-placeholder" id="placeholder" style="display:none;">
-      <span>Waiting for camera feed from server...</span>
+    <div class="grid">
+      <div class="video-wrap">
+        <img id="feed" src="http://localhost:5000/video" alt="">
+        <div class="banner" id="banner"></div>
+      </div>
+
+      <div class="panel">
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-label">G-Force</div>
+            <div class="metric-val" id="mG">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Activity</div>
+            <div class="metric-val" id="mAct">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">People</div>
+            <div class="metric-val" id="mPpl">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Falls</div>
+            <div class="metric-val" id="mFalls">0</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Avg Response</div>
+            <div class="metric-val" id="mResp">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">BLE</div>
+            <div class="metric-val" id="mBle">—</div>
+          </div>
+        </div>
+
+        <div class="chart-box">
+          <div class="chart-label">G-Force</div>
+          <canvas id="gChart"></canvas>
+        </div>
+      </div>
+
+      <div class="log-section">
+        <div class="log-label">Fall History</div>
+        <table>
+          <thead><tr><th>Time</th><th>Impact</th><th>Outcome</th><th>Response</th></tr></thead>
+          <tbody id="fallBody"><tr><td class="empty-row" colspan="4">No falls yet</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="actions">
+        <button onclick="f('/simulate/fall')">Simulate fall</button>
+        <button onclick="f('/simulate/emergency')">Simulate emergency</button>
+        <button onclick="f('/simulate/reset')">Reset</button>
+      </div>
     </div>
   </div>
-
-  <div class="alert-banner" id="alertBanner"></div>
-
-  <div class="controls">
-    <button onclick="simulateEmergency()" class="danger">Simulate Emergency</button>
-    <button onclick="resetStatus()">Reset</button>
-  </div>
-
-  <div class="log" id="log"></div>
 
   <script>
-    const statusText = document.getElementById('statusText');
-    const statusDot = document.getElementById('statusDot');
-    const alertBanner = document.getElementById('alertBanner');
-    const logEl = document.getElementById('log');
-    const videoFeed = document.getElementById('videoFeed');
-    const placeholder = document.getElementById('placeholder');
+    const API = 'http://localhost:5000';
+    const f = path => fetch(API + path);
 
-    let lastState = '';
+    const ctx = document.getElementById('gChart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: [], datasets: [{ data: [], borderColor: '#888', borderWidth: 1, pointRadius: 0, tension: 0.3, fill: false }] },
+      options: {
+        responsive: false, animation: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: { min: 0, max: 4, grid: { color: 'rgba(128,128,128,0.1)' }, ticks: { color: '#888', font: { size: 10 } } }
+        }
+      }
+    });
 
-    function log(msg, type = '') {
-      const time = new Date().toLocaleTimeString();
-      const entry = document.createElement('div');
-      entry.className = 'log-entry ' + type;
-      entry.textContent = `[${time}] ${msg}`;
-      logEl.prepend(entry);
-    }
-
-    videoFeed.onerror = () => {
-      videoFeed.style.display = 'none';
-      placeholder.style.display = 'flex';
-    };
-
-    videoFeed.onload = () => {
-      videoFeed.style.display = 'block';
-      placeholder.style.display = 'none';
-    };
-
-    async function pollStatus() {
+    async function tick() {
       try {
-        const res = await fetch('http://localhost:5000/status');
-        const data = await res.json();
+        const [s, g, fl] = await Promise.all([
+          fetch(API+'/status').then(r=>r.json()),
+          fetch(API+'/gforce').then(r=>r.json()),
+          fetch(API+'/falls').then(r=>r.json())
+        ]);
 
-        let newState = '';
-        if (data.emergency) {
-          newState = 'emergency';
-          alertBanner.className = 'alert-banner emergency';
-          alertBanner.style.display = 'block';
-          alertBanner.textContent = 'EMERGENCY — Robot seeking nearest person (' + (data.direction || 'scanning') + ')';
-          statusText.textContent = 'EMERGENCY';
-          statusDot.className = 'status-dot alert';
-        } else if (data.fall_waiting) {
-          newState = 'waiting';
-          alertBanner.className = 'alert-banner warning';
-          alertBanner.style.display = 'block';
-          alertBanner.textContent = 'Fall Detected — Waiting for response...';
-          statusText.textContent = 'Fall detected';
-          statusDot.className = 'status-dot warn';
+        document.getElementById('mG').textContent = s.current_g.toFixed(2) + 'g';
+        document.getElementById('mG').className = 'metric-val' + (s.current_g > 1.5 ? ' red' : '');
+        document.getElementById('mAct').textContent = s.activity_level;
+        document.getElementById('mPpl').textContent = s.person_count;
+        document.getElementById('mFalls').textContent = fl.length;
+
+        const bleEl = document.getElementById('mBle');
+        bleEl.textContent = s.ble_connected ? 'Connected' : 'Off';
+        bleEl.className = 'metric-val' + (s.ble_connected ? ' green' : '');
+
+        document.getElementById('dot').className = 'dot' + (s.ble_connected ? ' on' : '');
+        document.getElementById('connText').textContent = s.emergency ? 'Emergency' : s.fall_waiting ? 'Fall detected' : s.ble_connected ? 'Monitoring' : 'No BLE';
+
+        const banner = document.getElementById('banner');
+        if (s.emergency) { banner.className = 'banner crit'; banner.style.display = 'block'; banner.textContent = 'Emergency — seeking nearest person (' + (s.direction||'scanning') + ')'; }
+        else if (s.fall_waiting) { banner.className = 'banner warn'; banner.style.display = 'block'; banner.textContent = 'Fall detected — waiting for response'; }
+        else { banner.style.display = 'none'; }
+
+        const cancelled = fl.filter(x => x.outcome === 'cancelled');
+        document.getElementById('mResp').textContent = cancelled.length ? (cancelled.reduce((a,x)=>a+x.response_ms,0)/cancelled.length/1000).toFixed(1) + 's' : '—';
+
+        chart.data.labels = g.timestamps.map(t => new Date(t*1000).toLocaleTimeString());
+        chart.data.datasets[0].data = g.values;
+        chart.update();
+
+        const tbody = document.getElementById('fallBody');
+        if (fl.length === 0) {
+          tbody.innerHTML = '<tr><td class="empty-row" colspan="4">No falls yet</td></tr>';
         } else {
-          newState = 'ok';
-          alertBanner.style.display = 'none';
-          statusText.textContent = data.ble_connected ? 'Monitoring' : 'No BLE';
-          statusDot.className = 'status-dot' + (data.ble_connected ? ' ok' : '');
+          tbody.innerHTML = fl.slice().reverse().map(x =>
+            `<tr><td>${x.time_str}</td><td>${x.impact_g ? x.impact_g.toFixed(2)+'g' : '—'}</td><td><span class="tag ${x.outcome}">${x.outcome}</span></td><td>${(x.response_ms/1000).toFixed(1)}s</td></tr>`
+          ).join('');
         }
-
-        if (newState !== lastState) {
-          if (newState === 'emergency') log('EMERGENCY — no response, robot deployed!', 'alert');
-          else if (newState === 'waiting') log('Fall detected — waiting for user response', 'warn');
-          else if (lastState === 'emergency') log('Emergency cleared', 'ok');
-          else if (lastState === 'waiting') log('Fall cancelled', 'ok');
-          lastState = newState;
-        }
-      } catch (e) {
-        statusText.textContent = 'Server offline';
-        statusDot.className = 'status-dot';
+      } catch(e) {
+        document.getElementById('connText').textContent = 'Server offline';
+        document.getElementById('dot').className = 'dot';
       }
     }
 
-    async function simulateEmergency() {
-      await fetch('http://localhost:5000/simulate/emergency');
-      log('Simulated emergency triggered', 'alert');
-    }
-
-    async function resetStatus() {
-      await fetch('http://localhost:5000/simulate/reset');
-      log('Reset to monitoring', 'ok');
-    }
-
-    setInterval(pollStatus, 500);
-    pollStatus();
-    log('Dashboard loaded — connecting to server...');
+    setInterval(tick, 800);
+    tick();
   </script>
 </body>
 </html>

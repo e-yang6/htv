@@ -1,6 +1,5 @@
 // Fall Detection — Arduino Nano 33 BLE Sense
 // Uses the onboard IMU (LSM9DS1) to detect falls via G-force analysis.
-// If you have the Rev2 board, swap Arduino_LSM9DS1 for Arduino_BMI270_BMM150.
 
 #include <Arduino_LSM9DS1.h>
 #include <ArduinoBLE.h>
@@ -13,24 +12,27 @@ const unsigned long IMPACT_WINDOW_MS = 500;
 const unsigned long COOLDOWN_MS = 5000;
 const unsigned long CONFIRM_WINDOW_MS = 5000;
 
-// Double-tap to cancel: two taps within this window
 const float TAP_THRESHOLD = 1.8;
 const unsigned long DOUBLE_TAP_WINDOW_MS = 800;
 
 // --- State machine ---
-// BLE values: 0 = normal, 1 = fall detected (waiting), 2 = confirmed emergency
 enum State { MONITORING, FREEFALL, IMPACT_WAIT, FALL_DETECTED, ALERT, COOLDOWN };
 State state = MONITORING;
 unsigned long stateStartTime = 0;
 
-// Double-tap tracking
 unsigned long firstTapTime = 0;
 bool waitingForSecondTap = false;
 
 // --- BLE setup ---
 BLEService fallService("19B10000-E8F2-537E-4F6C-D104768A1214");
+// 0 = normal, 1 = fall detected (waiting), 2 = confirmed emergency
 BLEByteCharacteristic fallChar("19B10001-E8F2-537E-4F6C-D104768A1214",
                                 BLERead | BLENotify);
+// G-force as uint16 (value * 100, so 1.0g = 100)
+BLEUnsignedShortCharacteristic gForceChar("19B10002-E8F2-537E-4F6C-D104768A1214",
+                                           BLERead | BLENotify);
+
+float currentG = 1.0;
 
 void setup() {
   Serial.begin(115200);
@@ -59,13 +61,14 @@ void setup() {
   BLE.setLocalName("FallDetector");
   BLE.setAdvertisedService(fallService);
   fallService.addCharacteristic(fallChar);
+  fallService.addCharacteristic(gForceChar);
   BLE.addService(fallService);
   fallChar.writeValue(0);
+  gForceChar.writeValue(100);
   BLE.advertise();
 
   Serial.println("Fall detector running. Advertising as 'FallDetector' over BLE.");
-  Serial.println("BLE values: 0=normal, 1=fall(waiting), 2=EMERGENCY");
-  Serial.println("Double-tap chest piece to cancel a fall alert.");
+  Serial.println("BLE values: fall=0/1/2, gforce=x100");
   Serial.println("---");
 }
 
@@ -80,22 +83,30 @@ float getTotalG() {
 void loop() {
   BLE.poll();
 
-  float totalG = getTotalG();
+  currentG = getTotalG();
   unsigned long now = millis();
+
+  // Send G-force over BLE every 200ms
+  static unsigned long lastGSend = 0;
+  if (now - lastGSend > 200) {
+    lastGSend = now;
+    uint16_t gVal = (uint16_t)(currentG * 100);
+    gForceChar.writeValue(gVal);
+  }
 
   switch (state) {
 
     case MONITORING:
-      if (totalG < FREEFALL_THRESHOLD) {
+      if (currentG < FREEFALL_THRESHOLD) {
         state = FREEFALL;
         stateStartTime = now;
         Serial.print("Freefall detected! G=");
-        Serial.println(totalG, 2);
+        Serial.println(currentG, 2);
       }
       break;
 
     case FREEFALL:
-      if (totalG >= FREEFALL_THRESHOLD) {
+      if (currentG >= FREEFALL_THRESHOLD) {
         if (now - stateStartTime >= FREEFALL_MIN_MS) {
           state = IMPACT_WAIT;
           stateStartTime = now;
@@ -107,13 +118,13 @@ void loop() {
       break;
 
     case IMPACT_WAIT:
-      if (totalG > IMPACT_THRESHOLD) {
+      if (currentG > IMPACT_THRESHOLD) {
         state = FALL_DETECTED;
         stateStartTime = now;
         waitingForSecondTap = false;
         Serial.println("=============================");
         Serial.print("FALL DETECTED! Impact G=");
-        Serial.println(totalG, 2);
+        Serial.println(currentG, 2);
         Serial.println("Double-tap chest piece to cancel!");
         Serial.println("=============================");
 
@@ -130,21 +141,18 @@ void loop() {
       break;
 
     case FALL_DETECTED: {
-      // Blink red while waiting
       if ((now / 250) % 2 == 0) {
         digitalWrite(LEDR, LOW);
       } else {
         digitalWrite(LEDR, HIGH);
       }
 
-      // Double-tap detection
-      if (totalG > TAP_THRESHOLD) {
+      if (currentG > TAP_THRESHOLD) {
         if (!waitingForSecondTap) {
           firstTapTime = now;
           waitingForSecondTap = true;
           Serial.println("First tap detected...");
         } else if (now - firstTapTime > 150 && now - firstTapTime < DOUBLE_TAP_WINDOW_MS) {
-          // Second tap — user is OK
           Serial.println("Double-tap! Fall cancelled by user.");
           state = COOLDOWN;
           stateStartTime = now;
@@ -158,13 +166,11 @@ void loop() {
         }
       }
 
-      // Reset if first tap timed out
       if (waitingForSecondTap && now - firstTapTime > DOUBLE_TAP_WINDOW_MS) {
         waitingForSecondTap = false;
         Serial.println("Tap timed out, waiting for double-tap...");
       }
 
-      // 5 seconds no double-tap — real emergency
       if (now - stateStartTime > CONFIRM_WINDOW_MS) {
         state = ALERT;
         stateStartTime = now;
@@ -200,12 +206,11 @@ void loop() {
       break;
   }
 
-  // Print live G-force every 500ms when monitoring
   static unsigned long lastPrint = 0;
   if (state == MONITORING && now - lastPrint > 500) {
     lastPrint = now;
     Serial.print("G: ");
-    Serial.println(totalG, 2);
+    Serial.println(currentG, 2);
   }
 
   delay(10);
