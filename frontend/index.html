@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fall Detector</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #141420;
+      --border: #2a2a3a;
+      --text: #e0e0e8;
+      --text-dim: #888894;
+      --accent: #4a9eff;
+      --danger: #ff4a4a;
+      --success: #4aff7a;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px;
+    }
+
+    header {
+      width: 100%;
+      max-width: 720px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 0;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 600;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--text-dim);
+    }
+
+    .status-dot.ok { background: var(--success); }
+    .status-dot.alert { background: var(--danger); animation: pulse 0.5s infinite alternate; }
+
+    @keyframes pulse {
+      from { opacity: 1; }
+      to { opacity: 0.3; }
+    }
+
+    .camera-container {
+      width: 100%;
+      max-width: 720px;
+      aspect-ratio: 4 / 3;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .camera-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--text-dim);
+    }
+
+    .camera-placeholder svg {
+      width: 48px;
+      height: 48px;
+      stroke: var(--text-dim);
+      fill: none;
+      stroke-width: 1.5;
+    }
+
+    .alert-banner {
+      display: none;
+      width: 100%;
+      max-width: 720px;
+      margin-top: 16px;
+      padding: 16px 20px;
+      border-radius: 12px;
+      font-weight: 600;
+      text-align: center;
+      font-size: 1.1rem;
+    }
+
+    .alert-banner.warning {
+      display: block;
+      background: rgba(255, 165, 0, 0.15);
+      border: 1px solid rgba(255, 165, 0, 0.4);
+      color: #ffaa00;
+    }
+
+    .alert-banner.emergency {
+      display: block;
+      background: rgba(255, 74, 74, 0.15);
+      border: 1px solid rgba(255, 74, 74, 0.4);
+      color: var(--danger);
+    }
+
+    .controls {
+      width: 100%;
+      max-width: 720px;
+      margin-top: 16px;
+      display: flex;
+      gap: 12px;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px 20px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    button:hover { background: var(--border); }
+
+    .log {
+      width: 100%;
+      max-width: 720px;
+      margin-top: 16px;
+      padding: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
+    .log-entry { padding: 2px 0; }
+    .log-entry.alert { color: var(--danger); }
+    .log-entry.warn { color: #ffaa00; }
+    .log-entry.ok { color: var(--success); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Fall Detector</h1>
+    <div class="status">
+      <span id="statusText">Camera off</span>
+      <div class="status-dot" id="statusDot"></div>
+    </div>
+  </header>
+
+  <div class="camera-container">
+    <video id="video" autoplay playsinline></video>
+    <div class="camera-placeholder" id="placeholder">
+      <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <span>Click "Start Camera" below</span>
+    </div>
+  </div>
+
+  <div class="alert-banner" id="alertBanner"></div>
+
+  <div class="controls">
+    <button id="cameraBtn" onclick="toggleCamera()">Start Camera</button>
+    <button id="bleBtn" onclick="connectBLE()">Connect BLE</button>
+  </div>
+
+  <div class="log" id="log"></div>
+
+  <script>
+    const video = document.getElementById('video');
+    const placeholder = document.getElementById('placeholder');
+    const statusText = document.getElementById('statusText');
+    const statusDot = document.getElementById('statusDot');
+    const alertBanner = document.getElementById('alertBanner');
+    const cameraBtn = document.getElementById('cameraBtn');
+    const logEl = document.getElementById('log');
+
+    let cameraStream = null;
+    let bleDevice = null;
+    let bleChar = null;
+
+    function log(msg, type = '') {
+      const time = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = 'log-entry ' + type;
+      entry.textContent = `[${time}] ${msg}`;
+      logEl.prepend(entry);
+    }
+
+    async function toggleCamera() {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+        cameraStream = null;
+        video.srcObject = null;
+        placeholder.style.display = 'flex';
+        cameraBtn.textContent = 'Start Camera';
+        setStatus('Camera off', '');
+        log('Camera stopped');
+        return;
+      }
+
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: 1280, height: 720 }
+        });
+        video.srcObject = cameraStream;
+        placeholder.style.display = 'none';
+        cameraBtn.textContent = 'Stop Camera';
+        setStatus('Monitoring', 'ok');
+        log('Camera started', 'ok');
+      } catch (e) {
+        log('Camera error: ' + e.message, 'alert');
+      }
+    }
+
+    async function connectBLE() {
+      if (!navigator.bluetooth) {
+        log('Web Bluetooth not supported — use Chrome or Edge', 'alert');
+        return;
+      }
+
+      try {
+        log('Searching for FallDetector...');
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [{ name: 'FallDetector' }],
+          optionalServices: ['19b10000-e8f2-537e-4f6c-d104768a1214']
+        });
+
+        bleDevice.addEventListener('gattserverdisconnected', () => {
+          log('BLE disconnected', 'warn');
+          setStatus(cameraStream ? 'Camera only' : 'Disconnected', '');
+        });
+
+        log('Connecting...');
+        const server = await bleDevice.gatt.connect();
+        const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
+        bleChar = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
+
+        await bleChar.startNotifications();
+        bleChar.addEventListener('characteristicvaluechanged', onFallData);
+
+        log('Connected to FallDetector', 'ok');
+        setStatus('Monitoring', 'ok');
+      } catch (e) {
+        log('BLE error: ' + e.message, 'alert');
+      }
+    }
+
+    function onFallData(event) {
+      const value = event.target.value.getUint8(0);
+
+      if (value === 0) {
+        alertBanner.style.display = 'none';
+        alertBanner.className = 'alert-banner';
+        setStatus('Monitoring', 'ok');
+        log('Status: OK', 'ok');
+      } else if (value === 1) {
+        alertBanner.className = 'alert-banner warning';
+        alertBanner.style.display = 'block';
+        alertBanner.textContent = 'Fall Detected — Waiting for response...';
+        setStatus('Fall detected', 'alert');
+        log('FALL DETECTED — waiting for user response', 'warn');
+      } else if (value === 2) {
+        alertBanner.className = 'alert-banner emergency';
+        alertBanner.style.display = 'block';
+        alertBanner.textContent = 'EMERGENCY — No response — Sending robot!';
+        setStatus('EMERGENCY', 'alert');
+        log('EMERGENCY ALERT — no response from user', 'alert');
+      }
+    }
+
+    function setStatus(text, state) {
+      statusText.textContent = text;
+      statusDot.className = 'status-dot' + (state ? ' ' + state : '');
+    }
+
+    log('Fall Detector ready');
+  </script>
+</body>
+</html>
