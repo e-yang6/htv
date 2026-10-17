@@ -77,6 +77,7 @@
     .ble-btn:hover { background: var(--border); }
     .ble-btn.connected { border-color: var(--green); color: var(--green); }
     .ble-btn.connecting { border-color: var(--amber); color: var(--amber); }
+    .ble-btn:disabled { opacity: 0.5; cursor: default; }
 
     .grid { display: grid; grid-template-columns: 1fr 280px; gap: 20px; }
     @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
@@ -143,6 +144,7 @@
     <header>
       <h1>Fall Detector</h1>
       <div class="header-right">
+        <button id="robotBtn" class="ble-btn" onclick="toggleSeek()" disabled>Robot offline</button>
         <button id="bleBtn" class="ble-btn" onclick="connectBLE()">Connect BLE</button>
         <div class="conn"><span class="dot" id="dot"></span><span id="connText">Initializing</span></div>
       </div>
@@ -150,7 +152,7 @@
 
     <div class="grid">
       <div class="video-wrap">
-        <img id="feed" src="http://localhost:5000/video" alt="" onerror="onFeedError()">
+        <img id="feed" src="http://localhost:5001/video" alt="" onerror="onFeedError()">
         <video id="webcam" autoplay playsinline style="display:none;"></video>
         <div class="camera-fallback" id="camFallback">
           <span>Backend video stream offline</span>
@@ -212,8 +214,11 @@
   </div>
 
   <script>
-    const API = 'http://localhost:5000';
+    const API = 'http://localhost:5001';
     const f = path => fetch(API + path).catch(() => {});
+    // Robot bridge (robot/follow_bridge.py): go-to-person button + chest camera
+    const ROBOT = 'http://localhost:5002';
+    let robotOnline = false;
 
     // --- Web Bluetooth UUIDs ---
     const BLE_SERVICE_UUID = '19b10000-e8f2-537e-4f6c-d104768a1214';
@@ -266,6 +271,16 @@
 
     // --- Local Camera Fallback ---
     function onFeedError() {
+      // Backend camera offline: show the robot's chest camera instead if the bridge is up
+      if (robotOnline && !cameraStream) {
+        const feed = document.getElementById('feed');
+        if (!feed.src.startsWith(ROBOT)) {
+          feed.src = ROBOT + '/video?' + Date.now();
+          feed.style.display = 'block';
+          document.getElementById('camFallback').style.display = 'none';
+        }
+        return;
+      }
       if (!feedErrorOccurred && !cameraStream) {
         feedErrorOccurred = true;
         document.getElementById('feed').style.display = 'none';
@@ -549,6 +564,57 @@
 
     setInterval(tick, 800);
     tick();
+
+    // --- Robot: go to nearest person / return ---
+    const ROBOT_LABELS = {
+      follow:    ['Go to nearest person', ''],
+      seeking:   ['Heading to person (press to return)', 'connecting'],
+      scanning:  ['Looking for a person (press to return)', 'connecting'],
+      arrived:   ['Arrived, press to return', 'connected'],
+      returning: ['Returning (press to cancel)', 'connecting'],
+    };
+
+    function showRobot(s) {
+      const btn = document.getElementById('robotBtn');
+      if (!s) {
+        btn.textContent = 'Robot offline';
+        btn.className = 'ble-btn';
+        btn.disabled = true;
+        return;
+      }
+      const [label, cls] = ROBOT_LABELS[s.mode] || [s.mode, ''];
+      btn.disabled = s.mode === 'follow' && !s.camera;
+      btn.textContent = btn.disabled ? 'Robot camera off' : (s.emergency ? 'Fall: ' : '') + label;
+      btn.className = 'ble-btn' + (cls ? ' ' + cls : '');
+    }
+
+    async function robotTick() {
+      try {
+        const s = await fetch(ROBOT + '/status').then(r => r.json());
+        const wasOnline = robotOnline;
+        robotOnline = true;
+        showRobot(s);
+        if (!wasOnline) {
+          const feed = document.getElementById('feed');
+          if (feed.src.startsWith(ROBOT)) feed.src = ROBOT + '/video?' + Date.now();   // bridge restarted
+          else if (feedErrorOccurred) onFeedError();
+        }
+      } catch (e) {
+        robotOnline = false;
+        showRobot(null);
+      }
+    }
+
+    async function toggleSeek() {
+      try {
+        showRobot(await fetch(ROBOT + '/seek', { method: 'POST' }).then(r => r.json()));
+      } catch (e) {
+        showRobot(null);
+      }
+    }
+
+    setInterval(robotTick, 500);
+    robotTick();
   </script>
 </body>
 </html>

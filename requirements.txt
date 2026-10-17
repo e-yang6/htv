@@ -3,3 +3,4 @@ opencv-python
 bleak
 flask
 flask-cors
+pyserial
