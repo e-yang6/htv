@@ -1,6 +1,6 @@
 #Author: Generated for HTV project
-#Description: Minimal chest piece — absolute fastest print time
-#             Fits full Arduino TinyML Kit (Nano 33 BLE Sense + OV7675 + Shield)
+#Description: Sturdy chest piece for Arduino TinyML Kit
+#             Correct orientation: long side vertical in Fusion default view
 
 import adsk.core, adsk.fusion, adsk.cam, traceback, math
 
@@ -15,114 +15,241 @@ def run(context):
         # ==============================================
         # PARAMETERS (all in cm)
         # ==============================================
+        #
+        # ORIENTATION in Fusion (looking down, default top view):
+        #
+        #   Y axis = vertical (long dimension, 81mm)
+        #   X axis = horizontal (short dimension, 52mm)
+        #
+        #              +Y = TOP (OV7675 camera)
+        #          ┌──────────────┐
+        #          │              │
+        #  -X =    │              │  +X =
+        #  LEFT    │   kit here   │  RIGHT
+        #  (long)  │              │  (long)
+        #          │              │
+        #          └──────────────┘
+        #              -Y = BOTTOM
+        #
+        #   Power slot: BOTTOM wall, far RIGHT corner
+        #   USB slot:   LEFT wall, near BOTTOM
+        #   Both slots open all the way to the top of the walls
+        #
 
-        # Kit pocket (user measured)
-        KIT_L = 8.0
-        KIT_W = 4.0
-        KIT_H = 2.0
-        KIT_CLEARANCE = 0.05
+        # Kit (confirmed dimensions)
+        KIT_LONG = 8.1            # 81mm (along Y)
+        KIT_SHORT = 5.2           # 52mm (along X)
+        KIT_H = 2.0              # 20mm stack height
+        CLEARANCE = 0.15         # 1.5mm tolerance per side
 
-        # Minimal structure
-        WALL = 0.1                # 1mm walls (minimum viable for FDM)
-        BASE = 0.08               # 0.8mm base (4 layers at 0.2mm)
-        CLIP_W = 0.3
-        CLIP_D = 0.1
-        CLIP_H = 0.12
-        TAB_W = 0.8
-        TAB_L = 1.0
-        HOLE_R = 0.2
-        USB_W = 0.4
+        # Structure
+        WALL = 0.25              # 2.5mm walls
+        BASE = 0.2               # 2mm base
+        CHAMFER = 0.1            # 1mm chamfers
+
+        # Clips
+        CLIP_W = 0.4
+        CLIP_D = 0.12
+        CLIP_H = 0.15
+
+        # Strap tabs
+        TAB_W = 1.0
+        TAB_L = 1.2
+        HOLE_R = 0.25
+
+        # Wire slots (full height, open to top of wall)
+        USB_SLOT_W = 2.0         # 20mm wide
+        PWR_SLOT_W = 2.5         # 25mm wide
+
+        # Camera lens
         LENS_R = 0.5
 
         sketches = rootComp.sketches
         xyPlane = rootComp.xYConstructionPlane
         extrudes = rootComp.features.extrudeFeatures
+        chamfers = rootComp.features.chamferFeatures
 
-        kl = (KIT_L / 2) + KIT_CLEARANCE
-        kw = (KIT_W / 2) + KIT_CLEARANCE
+        # Half-sizes for the pocket interior
+        hx = (KIT_SHORT / 2) + CLEARANCE   # half width (X)
+        hy = (KIT_LONG / 2) + CLEARANCE    # half height (Y)
+
+        # Outer box edges
+        ox = hx + WALL
+        oy = hy + WALL
 
         # =============================================
-        # STEP 1: Base plate — ONLY under the kit, not a disc
-        # Just a rectangle, no wasted material
+        # STEP 1: Base plate
         # =============================================
-        margin = WALL + 0.05
         sk_base = sketches.add(xyPlane)
         lb = sk_base.sketchCurves.sketchLines
         lb.addByTwoPoints(
-            adsk.core.Point3D.create(-kl - margin, -kw - margin, 0),
-            adsk.core.Point3D.create(kl + margin, -kw - margin, 0))
+            adsk.core.Point3D.create(-ox, -oy, 0),
+            adsk.core.Point3D.create(ox, -oy, 0))
         lb.addByTwoPoints(
-            adsk.core.Point3D.create(kl + margin, -kw - margin, 0),
-            adsk.core.Point3D.create(kl + margin, kw + margin, 0))
+            adsk.core.Point3D.create(ox, -oy, 0),
+            adsk.core.Point3D.create(ox, oy, 0))
         lb.addByTwoPoints(
-            adsk.core.Point3D.create(kl + margin, kw + margin, 0),
-            adsk.core.Point3D.create(-kl - margin, kw + margin, 0))
+            adsk.core.Point3D.create(ox, oy, 0),
+            adsk.core.Point3D.create(-ox, oy, 0))
         lb.addByTwoPoints(
-            adsk.core.Point3D.create(-kl - margin, kw + margin, 0),
-            adsk.core.Point3D.create(-kl - margin, -kw - margin, 0))
+            adsk.core.Point3D.create(-ox, oy, 0),
+            adsk.core.Point3D.create(-ox, -oy, 0))
 
         if sk_base.profiles.count > 0:
-            ext_base = extrudes.createInput(
+            ext_b = extrudes.createInput(
                 sk_base.profiles.item(0),
                 adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
-            ext_base.setDistanceExtent(False,
+            ext_b.setDistanceExtent(False,
                 adsk.core.ValueInput.createByReal(BASE))
-            bf = extrudes.add(ext_base)
+            bf = extrudes.add(ext_b)
             bf.bodies.item(0).name = "ChestPiece"
 
         # =============================================
-        # STEP 2: Pocket walls (4 thin walls around the kit)
+        # STEP 2: Walls (outer box minus inner pocket)
         # =============================================
-        walls = [
-            (-kl - WALL, -kw - WALL, -kl, kw + WALL),
-            (kl, -kw - WALL, kl + WALL, kw + WALL),
-            (-kl - WALL, -kw - WALL, kl + WALL, -kw),
-            (-kl - WALL, kw, kl + WALL, kw + WALL),
+        sk_w = sketches.add(xyPlane)
+        lw = sk_w.sketchCurves.sketchLines
+        # Outer
+        lw.addByTwoPoints(adsk.core.Point3D.create(-ox, -oy, 0),
+                          adsk.core.Point3D.create(ox, -oy, 0))
+        lw.addByTwoPoints(adsk.core.Point3D.create(ox, -oy, 0),
+                          adsk.core.Point3D.create(ox, oy, 0))
+        lw.addByTwoPoints(adsk.core.Point3D.create(ox, oy, 0),
+                          adsk.core.Point3D.create(-ox, oy, 0))
+        lw.addByTwoPoints(adsk.core.Point3D.create(-ox, oy, 0),
+                          adsk.core.Point3D.create(-ox, -oy, 0))
+        # Inner
+        lw.addByTwoPoints(adsk.core.Point3D.create(-hx, -hy, 0),
+                          adsk.core.Point3D.create(hx, -hy, 0))
+        lw.addByTwoPoints(adsk.core.Point3D.create(hx, -hy, 0),
+                          adsk.core.Point3D.create(hx, hy, 0))
+        lw.addByTwoPoints(adsk.core.Point3D.create(hx, hy, 0),
+                          adsk.core.Point3D.create(-hx, hy, 0))
+        lw.addByTwoPoints(adsk.core.Point3D.create(-hx, hy, 0),
+                          adsk.core.Point3D.create(-hx, -hy, 0))
+
+        wall_area = (2*ox)*(2*oy) - (2*hx)*(2*hy)
+        wall_prof = None
+        for i in range(sk_w.profiles.count):
+            p = sk_w.profiles.item(i)
+            a = p.areaProperties().area
+            if abs(a - wall_area) < 2.0:
+                wall_prof = p
+                break
+        if wall_prof is None:
+            for i in range(sk_w.profiles.count):
+                p = sk_w.profiles.item(i)
+                a = p.areaProperties().area
+                full = (2*ox)*(2*oy)
+                if a < full and (wall_prof is None or a > wall_prof.areaProperties().area):
+                    wall_prof = p
+
+        if wall_prof:
+            ext_w = extrudes.createInput(
+                wall_prof,
+                adsk.fusion.FeatureOperations.JoinFeatureOperation)
+            off_w = adsk.fusion.OffsetStartDefinition.create(
+                adsk.core.ValueInput.createByReal(BASE))
+            ext_w.startExtent = off_w
+            ext_w.setDistanceExtent(False,
+                adsk.core.ValueInput.createByReal(KIT_H))
+            extrudes.add(ext_w)
+
+        # =============================================
+        # STEP 3: Power slot — BOTTOM wall (-Y), far RIGHT (+X)
+        # Full height: cuts from base to top of wall
+        # =============================================
+        sk_pwr = sketches.add(xyPlane)
+        lp = sk_pwr.sketchCurves.sketchLines
+        # Centered at about 60% toward the right edge
+        pwr_cx = hx * 0.6
+        p_x0 = pwr_cx - PWR_SLOT_W / 2
+        p_x1 = pwr_cx + PWR_SLOT_W / 2
+        p_y0 = -oy - 0.1
+        p_y1 = -hy + 0.1
+        lp.addByTwoPoints(adsk.core.Point3D.create(p_x0, p_y0, 0),
+                          adsk.core.Point3D.create(p_x1, p_y0, 0))
+        lp.addByTwoPoints(adsk.core.Point3D.create(p_x1, p_y0, 0),
+                          adsk.core.Point3D.create(p_x1, p_y1, 0))
+        lp.addByTwoPoints(adsk.core.Point3D.create(p_x1, p_y1, 0),
+                          adsk.core.Point3D.create(p_x0, p_y1, 0))
+        lp.addByTwoPoints(adsk.core.Point3D.create(p_x0, p_y1, 0),
+                          adsk.core.Point3D.create(p_x0, p_y0, 0))
+
+        if sk_pwr.profiles.count > 0:
+            ext_pwr = extrudes.createInput(
+                sk_pwr.profiles.item(0),
+                adsk.fusion.FeatureOperations.CutFeatureOperation)
+            off_p = adsk.fusion.OffsetStartDefinition.create(
+                adsk.core.ValueInput.createByReal(BASE))
+            ext_pwr.startExtent = off_p
+            ext_pwr.setDistanceExtent(False,
+                adsk.core.ValueInput.createByReal(KIT_H + 0.1))
+            extrudes.add(ext_pwr)
+
+        # =============================================
+        # STEP 4: USB slot — LEFT wall (-X), near BOTTOM (-Y)
+        # Full height: cuts from base to top of wall
+        # =============================================
+        sk_usb = sketches.add(xyPlane)
+        lu = sk_usb.sketchCurves.sketchLines
+        # Positioned about 1/3 up from bottom end
+        usb_cy = -hy * 0.5
+        u_x0 = -ox - 0.1
+        u_x1 = -hx + 0.1
+        u_y0 = usb_cy - USB_SLOT_W / 2
+        u_y1 = usb_cy + USB_SLOT_W / 2
+        lu.addByTwoPoints(adsk.core.Point3D.create(u_x0, u_y0, 0),
+                          adsk.core.Point3D.create(u_x1, u_y0, 0))
+        lu.addByTwoPoints(adsk.core.Point3D.create(u_x1, u_y0, 0),
+                          adsk.core.Point3D.create(u_x1, u_y1, 0))
+        lu.addByTwoPoints(adsk.core.Point3D.create(u_x1, u_y1, 0),
+                          adsk.core.Point3D.create(u_x0, u_y1, 0))
+        lu.addByTwoPoints(adsk.core.Point3D.create(u_x0, u_y1, 0),
+                          adsk.core.Point3D.create(u_x0, u_y0, 0))
+
+        if sk_usb.profiles.count > 0:
+            ext_usb = extrudes.createInput(
+                sk_usb.profiles.item(0),
+                adsk.fusion.FeatureOperations.CutFeatureOperation)
+            off_u = adsk.fusion.OffsetStartDefinition.create(
+                adsk.core.ValueInput.createByReal(BASE))
+            ext_usb.startExtent = off_u
+            ext_usb.setDistanceExtent(False,
+                adsk.core.ValueInput.createByReal(KIT_H + 0.1))
+            extrudes.add(ext_usb)
+
+        # =============================================
+        # STEP 5: Camera lens hole (through base)
+        # =============================================
+        sk_lens = sketches.add(xyPlane)
+        sk_lens.sketchCurves.sketchCircles.addByCenterRadius(
+            adsk.core.Point3D.create(0, 0, 0), LENS_R)
+        if sk_lens.profiles.count > 0:
+            ext_lens = extrudes.createInput(
+                sk_lens.profiles.item(0),
+                adsk.fusion.FeatureOperations.CutFeatureOperation)
+            ext_lens.setAllExtent(
+                adsk.fusion.ExtentDirections.PositiveExtentDirection)
+            extrudes.add(ext_lens)
+
+        # =============================================
+        # STEP 6: 4 retention clips
+        # =============================================
+        clip_list = [
+            # (cx, cy, wall) — which wall the clip is on
+            (0, -hy, 'bottom'),
+            (0, hy, 'top'),
+            (-hx, 0, 'left'),
+            (hx, 0, 'right'),
         ]
 
-        for x0, y0, x1, y1 in walls:
-            sk = sketches.add(xyPlane)
-            ln = sk.sketchCurves.sketchLines
-            ln.addByTwoPoints(
-                adsk.core.Point3D.create(x0, y0, 0),
-                adsk.core.Point3D.create(x1, y0, 0))
-            ln.addByTwoPoints(
-                adsk.core.Point3D.create(x1, y0, 0),
-                adsk.core.Point3D.create(x1, y1, 0))
-            ln.addByTwoPoints(
-                adsk.core.Point3D.create(x1, y1, 0),
-                adsk.core.Point3D.create(x0, y1, 0))
-            ln.addByTwoPoints(
-                adsk.core.Point3D.create(x0, y1, 0),
-                adsk.core.Point3D.create(x0, y0, 0))
-
-            if sk.profiles.count > 0:
-                ext = extrudes.createInput(
-                    sk.profiles.item(0),
-                    adsk.fusion.FeatureOperations.JoinFeatureOperation)
-                off = adsk.fusion.OffsetStartDefinition.create(
-                    adsk.core.ValueInput.createByReal(BASE))
-                ext.startExtent = off
-                ext.setDistanceExtent(False,
-                    adsk.core.ValueInput.createByReal(KIT_H))
-                extrudes.add(ext)
-
-        # =============================================
-        # STEP 3: 4 retention clips
-        # =============================================
-        clips = [
-            (0, -kw, 0, -1),
-            (0, kw, 0, 1),
-            (-kl, 0, 1, 0),
-            (kl, 0, 1, 0),
-        ]
-
-        for cx, cy, is_side, sign in clips:
+        for cx, cy, wall in clip_list:
             sk = sketches.add(xyPlane)
             cl = sk.sketchCurves.sketchLines
 
-            if is_side:
-                sign_x = -1 if cx < 0 else 1
+            if wall in ('left', 'right'):
+                sign_x = -1 if wall == 'left' else 1
                 cl.addByTwoPoints(
                     adsk.core.Point3D.create(cx, cy - CLIP_W/2, 0),
                     adsk.core.Point3D.create(cx + sign_x * CLIP_D, cy - CLIP_W/2, 0))
@@ -136,17 +263,18 @@ def run(context):
                     adsk.core.Point3D.create(cx, cy + CLIP_W/2, 0),
                     adsk.core.Point3D.create(cx, cy - CLIP_W/2, 0))
             else:
+                sign_y = -1 if wall == 'bottom' else 1
                 cl.addByTwoPoints(
                     adsk.core.Point3D.create(cx - CLIP_W/2, cy, 0),
                     adsk.core.Point3D.create(cx + CLIP_W/2, cy, 0))
                 cl.addByTwoPoints(
                     adsk.core.Point3D.create(cx + CLIP_W/2, cy, 0),
-                    adsk.core.Point3D.create(cx + CLIP_W/2, cy + sign * CLIP_D, 0))
+                    adsk.core.Point3D.create(cx + CLIP_W/2, cy + sign_y * CLIP_D, 0))
                 cl.addByTwoPoints(
-                    adsk.core.Point3D.create(cx + CLIP_W/2, cy + sign * CLIP_D, 0),
-                    adsk.core.Point3D.create(cx - CLIP_W/2, cy + sign * CLIP_D, 0))
+                    adsk.core.Point3D.create(cx + CLIP_W/2, cy + sign_y * CLIP_D, 0),
+                    adsk.core.Point3D.create(cx - CLIP_W/2, cy + sign_y * CLIP_D, 0))
                 cl.addByTwoPoints(
-                    adsk.core.Point3D.create(cx - CLIP_W/2, cy + sign * CLIP_D, 0),
+                    adsk.core.Point3D.create(cx - CLIP_W/2, cy + sign_y * CLIP_D, 0),
                     adsk.core.Point3D.create(cx - CLIP_W/2, cy, 0))
 
             if sk.profiles.count > 0:
@@ -161,59 +289,16 @@ def run(context):
                 extrudes.add(ext)
 
         # =============================================
-        # STEP 4: Camera lens hole
+        # STEP 7: 4 strap tabs with holes
         # =============================================
-        sk_lens = sketches.add(xyPlane)
-        sk_lens.sketchCurves.sketchCircles.addByCenterRadius(
-            adsk.core.Point3D.create(0, 0, 0), LENS_R)
-        if sk_lens.profiles.count > 0:
-            ext = extrudes.createInput(
-                sk_lens.profiles.item(0),
-                adsk.fusion.FeatureOperations.CutFeatureOperation)
-            ext.setAllExtent(
-                adsk.fusion.ExtentDirections.PositiveExtentDirection)
-            extrudes.add(ext)
-
-        # =============================================
-        # STEP 5: USB slot
-        # =============================================
-        sk_usb = sketches.add(xyPlane)
-        lu = sk_usb.sketchCurves.sketchLines
-        lu.addByTwoPoints(
-            adsk.core.Point3D.create(kl, -USB_W/2, 0),
-            adsk.core.Point3D.create(kl + WALL + margin + 0.1, -USB_W/2, 0))
-        lu.addByTwoPoints(
-            adsk.core.Point3D.create(kl + WALL + margin + 0.1, -USB_W/2, 0),
-            adsk.core.Point3D.create(kl + WALL + margin + 0.1, USB_W/2, 0))
-        lu.addByTwoPoints(
-            adsk.core.Point3D.create(kl + WALL + margin + 0.1, USB_W/2, 0),
-            adsk.core.Point3D.create(kl, USB_W/2, 0))
-        lu.addByTwoPoints(
-            adsk.core.Point3D.create(kl, USB_W/2, 0),
-            adsk.core.Point3D.create(kl, -USB_W/2, 0))
-
-        if sk_usb.profiles.count > 0:
-            ext = extrudes.createInput(
-                sk_usb.profiles.item(0),
-                adsk.fusion.FeatureOperations.CutFeatureOperation)
-            off = adsk.fusion.OffsetStartDefinition.create(
-                adsk.core.ValueInput.createByReal(BASE + 0.2))
-            ext.startExtent = off
-            ext.setDistanceExtent(False,
-                adsk.core.ValueInput.createByReal(0.5))
-            extrudes.add(ext)
-
-        # =============================================
-        # STEP 6: 4 strap tabs with holes
-        # =============================================
-        tab_positions = [
-            (kl + margin + TAB_L/2, 0, 0),
-            (-(kl + margin + TAB_L/2), 0, 180),
-            (0, kw + margin + TAB_L/2, 90),
-            (0, -(kw + margin + TAB_L/2), 270),
+        tab_data = [
+            (ox + TAB_L/2, 0, 0),       # right
+            (-(ox + TAB_L/2), 0, 180),   # left
+            (0, oy + TAB_L/2, 90),       # top
+            (0, -(oy + TAB_L/2), 270),   # bottom
         ]
 
-        for tx, ty, angle_deg in tab_positions:
+        for tx, ty, angle_deg in tab_data:
             angle = math.radians(angle_deg)
             cos_a = math.cos(angle)
             sin_a = math.sin(angle)
@@ -250,7 +335,7 @@ def run(context):
                     sk.profiles.item(0),
                     adsk.fusion.FeatureOperations.JoinFeatureOperation)
                 ext.setDistanceExtent(False,
-                    adsk.core.ValueInput.createByReal(BASE + 0.1))
+                    adsk.core.ValueInput.createByReal(BASE + 0.2))
                 extrudes.add(ext)
 
             # Strap hole
@@ -265,27 +350,55 @@ def run(context):
                     adsk.fusion.ExtentDirections.PositiveExtentDirection)
                 extrudes.add(ext_h)
 
+
+        # =============================================
+        # STEP 8: Chamfers on outer top edges
+        # =============================================
+        try:
+            body = rootComp.bRepBodies.item(0)
+            top_z = BASE + KIT_H
+            edges_col = adsk.core.ObjectCollection.create()
+            for i in range(body.edges.count):
+                e = body.edges.item(i)
+                if e.length < 0.2:
+                    continue
+                sp = e.startVertex.geometry
+                ep = e.endVertex.geometry
+                if abs(sp.z - top_z) < 0.02 and abs(ep.z - top_z) < 0.02:
+                    mid_x = (sp.x + ep.x) / 2
+                    mid_y = (sp.y + ep.y) / 2
+                    if abs(mid_x) > hx - 0.1 or abs(mid_y) > hy - 0.1:
+                        edges_col.add(e)
+            if edges_col.count > 0:
+                ch_in = chamfers.createInput2()
+                ch_in.chamferEdgeSets.addEqualDistanceChamferEdgeSet(
+                    edges_col,
+                    adsk.core.ValueInput.createByReal(CHAMFER),
+                    True)
+                chamfers.add(ch_in)
+        except:
+            pass
+
         # =============================================
         # Done
         # =============================================
         app.activeViewport.fit()
         ui.messageBox(
-            'MINIMAL chest piece generated!\n\n'
-            'What this is:\n'
-            '  A tray with walls + clips to hold your TinyML kit\n'
-            '  with strap tabs to attach to your chest.\n'
-            '  No decorative features. Pure function.\n\n'
-            'Dimensions:\n'
-            '  ~86mm x 46mm x 21mm (was 120mm round, 22mm tall)\n'
-            '  0.8mm base, 1mm walls\n\n'
-            'Print settings:\n'
-            '  Layer height: 0.2mm (or 0.28mm for speed)\n'
-            '  Infill: 10%% (base is thin enough to be all perimeters)\n'
-            '  Supports: none\n'
-            '  Material: PLA\n'
-            '  Est. filament: ~8-12g\n'
-            '  Est. print time: 30-60 min',
-            'Chest Piece — Minimal')
+            'Chest piece generated!\n\n'
+            'Orientation (Fusion top view):\n'
+            '  TOP = OV7675 camera end\n'
+            '  BOTTOM = opposite\n'
+            '  LEFT / RIGHT = long sides\n\n'
+            'Wire slots (full height, open to top):\n'
+            '  BOTTOM wall, far right: 20mm power slot\n'
+            '  LEFT wall, near bottom: 15mm USB slot\n\n'
+            '2.5mm walls, 2mm base, chamfered edges\n'
+            'Kit pocket: 84x55mm (81x52 + tolerance)\n'
+            'Camera lens hole centered in base\n'
+            '4 strap tabs, 4 retention clips\n\n'
+            'Print: 0.2mm layers, 15%% infill, no supports\n'
+            'Est: ~15-20g, ~1-1.5 hrs',
+            'Chest Piece')
 
     except:
         if ui:
