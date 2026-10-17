@@ -53,15 +53,48 @@
 
     header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     h1 { font-size: 18px; font-weight: 600; }
-    .conn { font-size: 13px; color: var(--dim); }
-    .conn .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); margin-right: 4px; vertical-align: middle; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .conn { font-size: 13px; color: var(--dim); display: flex; align-items: center; }
+    .conn .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); margin-right: 6px; }
     .conn .dot.on { background: var(--green); }
+    .conn .dot.warn { background: var(--amber); }
+    .conn .dot.crit { background: var(--red); }
+
+    .ble-btn {
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .ble-btn:hover { background: var(--border); }
+    .ble-btn.connected { border-color: var(--green); color: var(--green); }
+    .ble-btn.connecting { border-color: var(--amber); color: var(--amber); }
 
     .grid { display: grid; grid-template-columns: 1fr 280px; gap: 20px; }
     @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
 
-    .video-wrap { position: relative; background: var(--surface); border-radius: 6px; overflow: hidden; }
+    .video-wrap { position: relative; background: var(--surface); border-radius: 6px; overflow: hidden; min-height: 240px; display: flex; align-items: center; justify-content: center; }
     .video-wrap img { width: 100%; display: block; }
+    .video-wrap video { width: 100%; height: 100%; object-fit: cover; }
+    .camera-fallback {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 32px 16px;
+      color: var(--dim);
+      text-align: center;
+      width: 100%;
+    }
     .banner { display: none; position: absolute; bottom: 0; left: 0; right: 0; padding: 10px; text-align: center; font-size: 13px; font-weight: 600; }
     .banner.warn { display: block; background: rgba(184,110,0,0.85); color: #fff; }
     .banner.crit { display: block; background: rgba(221,0,0,0.85); color: #fff; }
@@ -90,7 +123,7 @@
     .tag.emergency { color: var(--red); }
     .empty-row { color: var(--dim); text-align: center; padding: 16px 8px; }
 
-    .actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 4px; }
+    .actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
     .actions button {
       padding: 7px 14px;
       border: 1px solid var(--border);
@@ -99,20 +132,30 @@
       color: var(--dim);
       font-size: 12px;
       cursor: pointer;
+      transition: background 0.15s, color 0.15s;
     }
     .actions button:hover { background: var(--surface); color: var(--text); }
+    .actions button.primary { border-color: var(--dim); color: var(--text); }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
       <h1>Fall Detector</h1>
-      <div class="conn"><span class="dot" id="dot"></span><span id="connText">Connecting</span></div>
+      <div class="header-right">
+        <button id="bleBtn" class="ble-btn" onclick="connectBLE()">Connect BLE</button>
+        <div class="conn"><span class="dot" id="dot"></span><span id="connText">Initializing</span></div>
+      </div>
     </header>
 
     <div class="grid">
       <div class="video-wrap">
-        <img id="feed" src="http://localhost:5000/video" alt="">
+        <img id="feed" src="http://localhost:5000/video" alt="" onerror="onFeedError()">
+        <video id="webcam" autoplay playsinline style="display:none;"></video>
+        <div class="camera-fallback" id="camFallback">
+          <span>Backend video stream offline</span>
+          <button class="ble-btn" id="webcamBtn" onclick="toggleWebcam()">Start Local Camera</button>
+        </div>
         <div class="banner" id="banner"></div>
       </div>
 
@@ -159,6 +202,8 @@
       </div>
 
       <div class="actions">
+        <button class="primary" onclick="connectBLE()">Connect BLE</button>
+        <button onclick="toggleWebcam()">Toggle Camera</button>
         <button onclick="f('/simulate/fall')">Simulate fall</button>
         <button onclick="f('/simulate/emergency')">Simulate emergency</button>
         <button onclick="f('/simulate/reset')">Reset</button>
@@ -168,8 +213,31 @@
 
   <script>
     const API = 'http://localhost:5000';
-    const f = path => fetch(API + path);
+    const f = path => fetch(API + path).catch(() => {});
 
+    // --- Web Bluetooth UUIDs ---
+    const BLE_SERVICE_UUID = '19b10000-e8f2-537e-4f6c-d104768a1214';
+    const FALL_CHAR_UUID   = '19b10001-e8f2-537e-4f6c-d104768a1214';
+    const GFORCE_CHAR_UUID = '19b10002-e8f2-537e-4f6c-d104768a1214';
+
+    let bleDevice = null;
+    let bleFallChar = null;
+    let bleGForceChar = null;
+    let isWebBleConnected = false;
+
+    // Web BLE local tracking
+    let localFallWaiting = false;
+    let localFallStartTime = null;
+    let localImpactG = 1.0;
+    let localFalls = [];
+    const localGHistory = []; // {time, val}
+    const MAX_G_POINTS = 60;
+
+    // Camera state
+    let cameraStream = null;
+    let feedErrorOccurred = false;
+
+    // Setup Chart.js
     const ctx = document.getElementById('gChart').getContext('2d');
     const chart = new Chart(ctx, {
       type: 'line',
@@ -184,50 +252,298 @@
       }
     });
 
+    // --- Fall Table Renderer ---
+    function renderFallTable(falls) {
+      const tbody = document.getElementById('fallBody');
+      if (!falls || falls.length === 0) {
+        tbody.innerHTML = '<tr><td class="empty-row" colspan="4">No falls yet</td></tr>';
+      } else {
+        tbody.innerHTML = falls.slice().reverse().map(x =>
+          `<tr><td>${x.time_str}</td><td>${x.impact_g ? x.impact_g.toFixed(2)+'g' : '—'}</td><td><span class="tag ${x.outcome}">${x.outcome}</span></td><td>${(x.response_ms/1000).toFixed(1)}s</td></tr>`
+        ).join('');
+      }
+    }
+
+    // --- Local Camera Fallback ---
+    function onFeedError() {
+      if (!feedErrorOccurred && !cameraStream) {
+        feedErrorOccurred = true;
+        document.getElementById('feed').style.display = 'none';
+        document.getElementById('camFallback').style.display = 'flex';
+      }
+    }
+
+    async function toggleWebcam() {
+      const videoEl = document.getElementById('webcam');
+      const feedEl = document.getElementById('feed');
+      const fallbackEl = document.getElementById('camFallback');
+      const btn = document.getElementById('webcamBtn');
+
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+        cameraStream = null;
+        videoEl.srcObject = null;
+        videoEl.style.display = 'none';
+        if (feedErrorOccurred) {
+          fallbackEl.style.display = 'flex';
+          if (btn) btn.textContent = 'Start Local Camera';
+        } else {
+          feedEl.style.display = 'block';
+        }
+        return;
+      }
+
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        videoEl.srcObject = cameraStream;
+        videoEl.style.display = 'block';
+        feedEl.style.display = 'none';
+        fallbackEl.style.display = 'none';
+        if (btn) btn.textContent = 'Stop Local Camera';
+      } catch (err) {
+        alert('Could not access webcam: ' + err.message);
+      }
+    }
+
+    // --- Web Bluetooth ---
+    async function connectBLE() {
+      if (!navigator.bluetooth) {
+        alert('Web Bluetooth is not supported in this browser.\nPlease use Google Chrome or Microsoft Edge.');
+        return;
+      }
+
+      const bleBtn = document.getElementById('bleBtn');
+      bleBtn.textContent = 'Scanning...';
+      bleBtn.className = 'ble-btn connecting';
+
+      try {
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [{ name: 'FallDetector' }],
+          optionalServices: [BLE_SERVICE_UUID]
+        });
+
+        bleDevice.addEventListener('gattserverdisconnected', onBLEDisconnected);
+
+        bleBtn.textContent = 'Connecting...';
+        const server = await bleDevice.gatt.connect();
+        const service = await server.getPrimaryService(BLE_SERVICE_UUID);
+
+        // Fall characteristic
+        bleFallChar = await service.getCharacteristic(FALL_CHAR_UUID);
+        await bleFallChar.startNotifications();
+        bleFallChar.addEventListener('characteristicvaluechanged', onFallCharacteristicChanged);
+
+        // G-force characteristic
+        try {
+          bleGForceChar = await service.getCharacteristic(GFORCE_CHAR_UUID);
+          await bleGForceChar.startNotifications();
+          bleGForceChar.addEventListener('characteristicvaluechanged', onGForceCharacteristicChanged);
+        } catch (e) {
+          console.warn('G-force characteristic not found:', e);
+        }
+
+        isWebBleConnected = true;
+        bleBtn.textContent = 'BLE Connected';
+        bleBtn.className = 'ble-btn connected';
+
+        const bleEl = document.getElementById('mBle');
+        bleEl.textContent = 'Connected';
+        bleEl.className = 'metric-val green';
+
+        document.getElementById('dot').className = 'dot on';
+        document.getElementById('connText').textContent = 'Monitoring (Web BLE)';
+      } catch (err) {
+        console.error('BLE connection failed:', err);
+        isWebBleConnected = false;
+        bleBtn.textContent = 'Connect BLE';
+        bleBtn.className = 'ble-btn';
+        if (err.name !== 'NotFoundError') { // User didn't just cancel
+          alert('Bluetooth error: ' + err.message);
+        }
+      }
+    }
+
+    function onBLEDisconnected() {
+      isWebBleConnected = false;
+      const bleBtn = document.getElementById('bleBtn');
+      bleBtn.textContent = 'Connect BLE';
+      bleBtn.className = 'ble-btn';
+
+      const bleEl = document.getElementById('mBle');
+      bleEl.textContent = 'Off';
+      bleEl.className = 'metric-val';
+
+      document.getElementById('dot').className = 'dot';
+      document.getElementById('connText').textContent = 'Disconnected';
+      document.getElementById('banner').style.display = 'none';
+    }
+
+    function onFallCharacteristicChanged(event) {
+      const val = event.target.value.getUint8(0);
+      const banner = document.getElementById('banner');
+      const now = Date.now();
+
+      if (val === 0) {
+        // Normal state
+        if (localFallWaiting && localFallStartTime) {
+          const responseMs = now - localFallStartTime;
+          localFalls.push({
+            time_str: new Date().toLocaleTimeString(),
+            impact_g: localImpactG,
+            outcome: 'cancelled',
+            response_ms: responseMs
+          });
+          renderFallTable(localFalls);
+          updateAvgResponse();
+        }
+        localFallWaiting = false;
+        localFallStartTime = null;
+
+        banner.style.display = 'none';
+        document.getElementById('dot').className = 'dot on';
+        document.getElementById('connText').textContent = 'Monitoring (Web BLE)';
+        f('/simulate/reset');
+      } else if (val === 1) {
+        // Fall detected — waiting for user double-tap
+        localFallWaiting = true;
+        localFallStartTime = now;
+
+        banner.className = 'banner warn';
+        banner.style.display = 'block';
+        banner.textContent = 'Fall detected — waiting for response (double-tap chest piece)';
+
+        document.getElementById('dot').className = 'dot warn';
+        document.getElementById('connText').textContent = 'Fall detected';
+        f('/simulate/fall');
+      } else if (val === 2) {
+        // Emergency state
+        const responseMs = localFallStartTime ? (now - localFallStartTime) : 5000;
+        localFalls.push({
+          time_str: new Date().toLocaleTimeString(),
+          impact_g: localImpactG,
+          outcome: 'emergency',
+          response_ms: responseMs
+        });
+        localFallWaiting = false;
+        localFallStartTime = null;
+
+        renderFallTable(localFalls);
+        updateAvgResponse();
+
+        banner.className = 'banner crit';
+        banner.style.display = 'block';
+        banner.textContent = 'EMERGENCY — No response — Robot dispatched!';
+
+        document.getElementById('dot').className = 'dot crit';
+        document.getElementById('connText').textContent = 'Emergency';
+        f('/simulate/emergency');
+      }
+
+      document.getElementById('mFalls').textContent = localFalls.length;
+    }
+
+    function onGForceCharacteristicChanged(event) {
+      const raw = event.target.value.getUint16(0, true); // uint16 little-endian
+      const g = raw / 100.0;
+      localImpactG = g;
+
+      // Update G-Force metric
+      const mG = document.getElementById('mG');
+      mG.textContent = g.toFixed(2) + 'g';
+      mG.className = 'metric-val' + (g > 1.5 ? ' red' : '');
+
+      // Maintain local history for chart
+      const timeStr = new Date().toLocaleTimeString();
+      localGHistory.push({ time: timeStr, val: g });
+      if (localGHistory.length > MAX_G_POINTS) localGHistory.shift();
+
+      // Compute activity level
+      if (localGHistory.length >= 10) {
+        const recent = localGHistory.slice(-30).map(x => x.val);
+        const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
+        const variance = recent.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / recent.length;
+        const actEl = document.getElementById('mAct');
+        if (variance > 0.15) actEl.textContent = 'high';
+        else if (variance > 0.03) actEl.textContent = 'medium';
+        else actEl.textContent = 'low';
+      }
+
+      // Update Chart
+      chart.data.labels = localGHistory.map(x => x.time);
+      chart.data.datasets[0].data = localGHistory.map(x => x.val);
+      chart.update();
+    }
+
+    function updateAvgResponse() {
+      const cancelled = localFalls.filter(x => x.outcome === 'cancelled');
+      const avg = cancelled.length ? (cancelled.reduce((a, x) => a + x.response_ms, 0) / cancelled.length / 1000).toFixed(1) + 's' : '—';
+      document.getElementById('mResp').textContent = avg;
+    }
+
+    // --- Backend Server Polling (Runs in parallel) ---
     async function tick() {
       try {
         const [s, g, fl] = await Promise.all([
-          fetch(API+'/status').then(r=>r.json()),
-          fetch(API+'/gforce').then(r=>r.json()),
-          fetch(API+'/falls').then(r=>r.json())
+          fetch(API + '/status').then(r => r.json()),
+          fetch(API + '/gforce').then(r => r.json()),
+          fetch(API + '/falls').then(r => r.json())
         ]);
 
-        document.getElementById('mG').textContent = s.current_g.toFixed(2) + 'g';
-        document.getElementById('mG').className = 'metric-val' + (s.current_g > 1.5 ? ' red' : '');
-        document.getElementById('mAct').textContent = s.activity_level;
-        document.getElementById('mPpl').textContent = s.person_count;
-        document.getElementById('mFalls').textContent = fl.length;
-
-        const bleEl = document.getElementById('mBle');
-        bleEl.textContent = s.ble_connected ? 'Connected' : 'Off';
-        bleEl.className = 'metric-val' + (s.ble_connected ? ' green' : '');
-
-        document.getElementById('dot').className = 'dot' + (s.ble_connected ? ' on' : '');
-        document.getElementById('connText').textContent = s.emergency ? 'Emergency' : s.fall_waiting ? 'Fall detected' : s.ble_connected ? 'Monitoring' : 'No BLE';
-
-        const banner = document.getElementById('banner');
-        if (s.emergency) { banner.className = 'banner crit'; banner.style.display = 'block'; banner.textContent = 'Emergency — seeking nearest person (' + (s.direction||'scanning') + ')'; }
-        else if (s.fall_waiting) { banner.className = 'banner warn'; banner.style.display = 'block'; banner.textContent = 'Fall detected — waiting for response'; }
-        else { banner.style.display = 'none'; }
-
-        const cancelled = fl.filter(x => x.outcome === 'cancelled');
-        document.getElementById('mResp').textContent = cancelled.length ? (cancelled.reduce((a,x)=>a+x.response_ms,0)/cancelled.length/1000).toFixed(1) + 's' : '—';
-
-        chart.data.labels = g.timestamps.map(t => new Date(t*1000).toLocaleTimeString());
-        chart.data.datasets[0].data = g.values;
-        chart.update();
-
-        const tbody = document.getElementById('fallBody');
-        if (fl.length === 0) {
-          tbody.innerHTML = '<tr><td class="empty-row" colspan="4">No falls yet</td></tr>';
-        } else {
-          tbody.innerHTML = fl.slice().reverse().map(x =>
-            `<tr><td>${x.time_str}</td><td>${x.impact_g ? x.impact_g.toFixed(2)+'g' : '—'}</td><td><span class="tag ${x.outcome}">${x.outcome}</span></td><td>${(x.response_ms/1000).toFixed(1)}s</td></tr>`
-          ).join('');
+        // If backend is active and local webcam is not overriding, restore feed
+        if (feedErrorOccurred && !cameraStream) {
+          feedErrorOccurred = false;
+          const feed = document.getElementById('feed');
+          feed.src = API + '/video?' + Date.now();
+          feed.style.display = 'block';
+          document.getElementById('camFallback').style.display = 'none';
         }
-      } catch(e) {
-        document.getElementById('connText').textContent = 'Server offline';
-        document.getElementById('dot').className = 'dot';
+
+        document.getElementById('mPpl').textContent = s.person_count;
+
+        // If Web BLE is NOT connected in browser, use backend server data
+        if (!isWebBleConnected) {
+          document.getElementById('mG').textContent = s.current_g.toFixed(2) + 'g';
+          document.getElementById('mG').className = 'metric-val' + (s.current_g > 1.5 ? ' red' : '');
+          document.getElementById('mAct').textContent = s.activity_level;
+          document.getElementById('mFalls').textContent = fl.length;
+
+          const bleEl = document.getElementById('mBle');
+          bleEl.textContent = s.ble_connected ? 'Connected' : 'Off';
+          bleEl.className = 'metric-val' + (s.ble_connected ? ' green' : '');
+
+          document.getElementById('dot').className = 'dot' + (s.ble_connected ? ' on' : '');
+          document.getElementById('connText').textContent = s.emergency ? 'Emergency' : s.fall_waiting ? 'Fall detected' : s.ble_connected ? 'Monitoring' : 'No BLE';
+
+          const banner = document.getElementById('banner');
+          if (s.emergency) {
+            banner.className = 'banner crit';
+            banner.style.display = 'block';
+            banner.textContent = 'Emergency — seeking nearest person (' + (s.direction || 'scanning') + ')';
+          } else if (s.fall_waiting) {
+            banner.className = 'banner warn';
+            banner.style.display = 'block';
+            banner.textContent = 'Fall detected — waiting for response';
+          } else {
+            banner.style.display = 'none';
+          }
+
+          const cancelled = fl.filter(x => x.outcome === 'cancelled');
+          document.getElementById('mResp').textContent = cancelled.length ? (cancelled.reduce((a, x) => a + x.response_ms, 0) / cancelled.length / 1000).toFixed(1) + 's' : '—';
+
+          chart.data.labels = g.timestamps.map(t => new Date(t * 1000).toLocaleTimeString());
+          chart.data.datasets[0].data = g.values;
+          chart.update();
+
+          renderFallTable(fl);
+        }
+      } catch (e) {
+        onFeedError();
+        if (!isWebBleConnected) {
+          document.getElementById('connText').textContent = 'Server offline';
+          document.getElementById('dot').className = 'dot';
+        }
       }
     }
 
