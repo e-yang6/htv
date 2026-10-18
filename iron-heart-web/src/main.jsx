@@ -389,17 +389,12 @@ function App() {
       <div className="mx-auto min-h-screen max-w-6xl px-3 py-3 sm:px-6 sm:py-6">
 
         <header className="mb-4 px-1 sm:mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRONHEART</span>
-            <span className="micro hidden sm:inline text-zinc-500">· EMERGENCY ROBOT DASHBOARD</span>
-          </div>
+          <span className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRONHEART</span>
           <button
             onClick={() => setIsOnboardingOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-line bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-all hover:border-cyan hover:text-cyan"
-            title="Click to view or update host medical condition"
+            className="micro text-zinc-500 hover:text-cyan transition-colors"
           >
-            <Terminal size={13} className="text-cyan" />
-            <span>Host: {hostCondition ? hostCondition.split(" (")[0] : "Not Set"}</span>
+            {hostCondition ? hostCondition.split(" (")[0] : "Set Condition"}
           </button>
         </header>
 
