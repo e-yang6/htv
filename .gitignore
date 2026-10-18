@@ -5,6 +5,12 @@
 *.a
 *.pdb
 *.ilk
+dist/
+node_modules/
+iron-heart-web/node_modules/.bin/
+iron-heart-web/node_modules/.vite/
+iron-heart-web/node_modules/@esbuild/
+iron-heart-web/node_modules/@rollup/
 
 # Visual Studio / IDE temporary files
 .vs/
@@ -15,3 +21,8 @@
 
 __pycache__/
 *.pt
+
+.agents/
+.taste-skill/
+skills-lock.json
+dev-gtm-claude-skills-temp/

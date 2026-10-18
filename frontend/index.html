@@ -3,224 +3,1222 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fall Detector</title>
+  <title>Fall Detection & Robot Control Dashboard</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="modules.js"></script>
   <style>
     :root {
-      --bg: #fff;
-      --surface: #f7f7f8;
-      --border: #e5e5e5;
-      --text: #111;
-      --dim: #777;
-      --red: #d00;
-      --green: #1a8d1a;
-      --amber: #b86e00;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root:not([data-theme="light"]) {
-        --bg: #111;
-        --surface: #1a1a1a;
-        --border: #2a2a2a;
-        --text: #ddd;
-        --dim: #888;
-        --red: #e55;
-        --green: #5b5;
-        --amber: #da3;
-      }
-    }
-    :root[data-theme="dark"] {
-      --bg: #111;
-      --surface: #1a1a1a;
-      --border: #2a2a2a;
-      --text: #ddd;
-      --dim: #888;
-      --red: #e55;
-      --green: #5b5;
-      --amber: #da3;
+      /* White and Ocean Blue Healthcare Theme */
+      --bg-page: #f1f6fa;
+      --bg-card: #ffffff;
+      --bg-subtle: #f8fafc;
+      --bg-card-tint: #f0f7ff;
+
+      --glass-surface: rgba(255, 255, 255, 0.88);
+      --glass-border: rgba(2, 132, 199, 0.14);
+      --glass-border-subtle: rgba(15, 23, 42, 0.08);
+
+      --ocean-primary: #0369a1;
+      --ocean-hover: #0284c7;
+      --ocean-deep: #0c2340;
+      --ocean-light: #e0f2fe;
+
+      --text-main: #0c2340;
+      --text-secondary: #334155;
+      --text-muted: #64748b;
+      --text-inverse: #ffffff;
+
+      --status-green: #15803d;
+      --status-green-bg: #f0fdf4;
+      --status-green-border: rgba(21, 128, 61, 0.25);
+      --status-amber: #b45309;
+      --status-amber-bg: #fffbeb;
+      --status-amber-border: rgba(180, 83, 9, 0.25);
+      --status-red: #b91c1c;
+      --status-red-bg: #fef2f2;
+      --status-red-border: rgba(185, 28, 28, 0.25);
+
+      --radius: 6px;
+      --radius-sm: 4px;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
+
     body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      padding: 24px 16px;
-      font-size: 14px;
+      background: var(--bg-page);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      font-size: 16px;
       line-height: 1.5;
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      flex-direction: column;
     }
 
-    .container { max-width: 960px; margin: 0 auto; }
+    /* Navigation Bar */
+    .navbar {
+      background: var(--glass-surface);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 52px;
+      flex-shrink: 0;
+    }
+    @media (max-width: 680px) {
+      .navbar {
+        height: auto;
+        padding: 12px 16px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .nav-right {
+        width: 100%;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+    }
 
-    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-    h1 { font-size: 18px; font-weight: 600; }
-    .header-right { display: flex; align-items: center; gap: 12px; }
-    .conn { font-size: 13px; color: var(--dim); display: flex; align-items: center; }
-    .conn .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); margin-right: 6px; }
-    .conn .dot.on { background: var(--green); }
-    .conn .dot.warn { background: var(--amber); }
-    .conn .dot.crit { background: var(--red); }
+    .nav-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .nav-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-main);
+      letter-spacing: -0.01em;
+    }
+    .nav-tagline {
+      font-size: 14px;
+      color: #334155;
+    }
 
-    .ble-btn {
-      padding: 6px 14px;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      background: var(--surface);
-      color: var(--text);
-      font-size: 12px;
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-badge {
+      font-size: 13px;
       font-weight: 500;
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-subtle);
+      border: 1px solid var(--glass-border-subtle);
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+    .status-badge .dot.on {
+      background: var(--status-green);
+    }
+
+    /* Production-Grade Buttons */
+    .btn {
+      padding: 7px 14px;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(15, 23, 42, 0.16);
+      background: #ffffff;
+      color: var(--text-main);
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+      user-select: none;
+      outline: none;
     }
-    .ble-btn:hover { background: var(--border); }
-    .ble-btn.connected { border-color: var(--green); color: var(--green); }
-    .ble-btn.connecting { border-color: var(--amber); color: var(--amber); }
-    .ble-btn:disabled { opacity: 0.5; cursor: default; }
+    .btn:hover {
+      background: #f1f5f9;
+      border-color: rgba(15, 23, 42, 0.28);
+    }
+    .btn:active {
+      transform: scale(0.98);
+    }
+    .btn-primary {
+      background: var(--ocean-primary);
+      border: 1px solid var(--ocean-primary);
+      color: #ffffff;
+    }
+    .btn-primary:hover {
+      background: var(--ocean-hover);
+      border-color: var(--ocean-hover);
+    }
+    .btn-danger {
+      background: var(--status-red-bg);
+      border: 1px solid var(--status-red-border);
+      color: var(--status-red);
+    }
+    .btn-danger:hover {
+      background: rgba(220, 38, 38, 0.12);
+      border-color: rgba(220, 38, 38, 0.4);
+    }
 
-    .grid { display: grid; grid-template-columns: 1fr 280px; gap: 20px; }
-    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+    /* Dashboard Layout */
+    .page {
+      flex: 1;
+      padding: 20px 24px 32px;
+      max-width: 1320px;
+      margin: 0 auto;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
 
-    .video-wrap { position: relative; background: var(--surface); border-radius: 6px; overflow: hidden; min-height: 240px; display: flex; align-items: center; justify-content: center; }
-    .video-wrap img { width: 100%; display: block; }
-    .video-wrap video { width: 100%; height: 100%; object-fit: cover; }
-    .camera-fallback {
+    .top-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) { .top-grid { grid-template-columns: 1fr; } }
+
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) { .bottom-grid { grid-template-columns: 1fr; } }
+
+    /* Motion Choreography */
+    @keyframes enterUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .navbar { animation: enterUp 0.3s ease-out both; }
+    .top-grid > .card:nth-child(1) { animation: enterUp 0.35s 0.04s ease-out both; }
+    .top-grid > .card:nth-child(2) { animation: enterUp 0.35s 0.08s ease-out both; }
+    .arms-card { animation: enterUp 0.4s 0.12s ease-out both; }
+    .bottom-grid > .card:nth-child(1) { animation: enterUp 0.45s 0.16s ease-out both; }
+    .bottom-grid > .card:nth-child(2) { animation: enterUp 0.45s 0.2s ease-out both; }
+    .heart-container { animation: enterUp 0.38s 0.06s ease-out both; }
+    .feed-container { animation: enterUp 0.38s 0.1s ease-out both; }
+    .arms-overview { animation: enterUp 0.42s 0.14s ease-out both; }
+    .chart-container { animation: enterUp 0.46s 0.18s ease-out both; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .navbar, .card, .arms-card {
+        animation: none !important;
+      }
+      .heart-shape {
+        animation: none !important;
+      }
+    }
+
+    /* Card Panels */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .card-head {
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-subtle);
+      /* tone step used */
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title svg {
+      width: 16px;
+      height: 16px;
+      color: var(--ocean-primary);
+    }
+    .card-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 400;
+      margin-left: 6px;
+    }
+
+    /* Patient State & 3D Heart Card */
+    .patient-body {
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 16px;
+      flex: 1;
+    }
+    @media (max-width: 540px) { .patient-body { grid-template-columns: 1fr; } }
+
+    .heart-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 160px;
+      background: var(--bg-card-tint);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--glass-border);
+    }
+
+    /* 3D Heart Design in Ocean Blue Liquid Glass */
+    .heart-shape {
+      width: 88px;
+      height: 80px;
+      animation: heartPulse 2.4s ease-in-out infinite;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.3s ease;
+    }
+    @keyframes heartPulse {
+      0%, 100% { transform: scale(1); }
+      14% { transform: scale(1.08); }
+      28% { transform: scale(1); }
+      42% { transform: scale(1.04); }
+      56% { transform: scale(1); }
+    }
+    .heart-svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .patient-status-info {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .status-heading {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+    .status-primary {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-top: 2px;
+    }
+    .status-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      line-height: 1.45;
+    }
+
+    .simulation-controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    /* Metric Grid Cells */
+    .metrics-bar {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      background: var(--bg-subtle);
+      /* tone step used */
+    }
+    .metric-cell {
+      padding: 12px 16px;
+      /* spaced */
+    }
+    .metric-cell:last-child { border-right: none; }
+    .metric-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 3px;
+    }
+    .metric-val {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-main);
+      font-variant-numeric: tabular-nums;
+      display: flex;
+      align-items: baseline;
+      gap: 3px;
+    }
+    .metric-val .unit {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+    .metric-val.red { color: var(--status-red); }
+    .metric-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Camera Feed Card */
+    .feed-container {
+      position: relative;
+      background: #0b1523;
+      min-height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .feed-container img,
+    .feed-container video {
+      width: 100%;
+      height: 100%;
+      max-height: 240px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .feed-overlay-top {
+      position: absolute;
+      top: 10px;
+      left: 12px;
+      display: flex;
+      gap: 8px;
+      z-index: 5;
+    }
+    .feed-badge {
+      font-size: 13px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .feed-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--status-red);
+    }
+
+    .feed-fallback {
       display: none;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 10px;
-      padding: 32px 16px;
-      color: var(--dim);
+      padding: 36px 16px;
+      color: #94a3b8;
       text-align: center;
       width: 100%;
     }
-    .banner { display: none; position: absolute; bottom: 0; left: 0; right: 0; padding: 10px; text-align: center; font-size: 13px; font-weight: 600; }
-    .banner.warn { display: block; background: rgba(184,110,0,0.85); color: #fff; }
-    .banner.crit { display: block; background: rgba(221,0,0,0.85); color: #fff; }
 
-    .panel { display: flex; flex-direction: column; gap: 16px; }
-
-    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-    .metric { background: var(--bg); padding: 12px; }
-    .metric-label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
-    .metric-val { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
-    .metric-val.red { color: var(--red); }
-    .metric-val.green { color: var(--green); }
-    .metric-val.amber { color: var(--amber); }
-
-    .chart-box { border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
-    .chart-box canvas { width: 100% !important; height: 120px !important; }
-    .chart-label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
-
-    .log-section { grid-column: 1 / -1; margin-top: 4px; }
-    .log-label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th { text-align: left; padding: 6px 8px; border-bottom: 2px solid var(--border); color: var(--dim); font-weight: 500; }
-    td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
-    .tag { font-size: 12px; font-weight: 500; }
-    .tag.cancelled { color: var(--green); }
-    .tag.emergency { color: var(--red); }
-    .empty-row { color: var(--dim); text-align: center; padding: 16px 8px; }
-
-    .actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-    .actions button {
-      padding: 7px 14px;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      background: var(--bg);
-      color: var(--dim);
-      font-size: 12px;
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s;
+    .alert-banner {
+      display: none;
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 8px 14px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+      z-index: 5;
     }
-    .actions button:hover { background: var(--surface); color: var(--text); }
-    .actions button.primary { border-color: var(--dim); color: var(--text); }
+    .alert-banner.warn {
+      display: block;
+      background: var(--status-amber);
+      color: #ffffff;
+    }
+    .alert-banner.crit {
+      display: block;
+      background: var(--status-red);
+      color: #ffffff;
+    }
+
+    .feed-status-bar {
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-subtle);
+      /* tone step used */
+    }
+    .feed-status-text {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+    .feed-status-text b { color: var(--text-main); font-weight: 600; }
+
+    /* Waveform & Incident Log */
+    .chart-container {
+      padding: 12px 16px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .chart-container canvas {
+      width: 100% !important;
+      flex: 1;
+      min-height: 95px;
+      max-height: 115px;
+    }
+    .chart-footer {
+      padding: 8px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      /* tone step used */
+      background: var(--bg-subtle);
+    }
+
+    .incident-log-body {
+      padding: 12px 16px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow-y: auto;
+      max-height: 160px;
+    }
+    .log-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 13px;
+    }
+    .log-time {
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .log-content { flex: 1; }
+    .log-title { font-weight: 600; color: var(--text-main); }
+    .log-detail { color: var(--text-secondary); font-size: 13px; margin-top: 1px; }
+    .log-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      margin-top: 6px;
+      flex-shrink: 0;
+    }
+    .log-dot.green { background: var(--status-green); }
+    .log-dot.amber { background: var(--status-amber); }
+    .log-dot.red { background: var(--status-red); }
+    .log-dot.ocean { background: var(--ocean-primary); }
+    .log-empty {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      padding: 28px 0;
+    }
+
+    /* Robot Arms Overview Strip */
+    .arms-overview {
+      padding: 14px 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      align-items: center;
+    }
+    @media (max-width: 600px) { .arms-overview { grid-template-columns: 1fr; } }
+    .arm-slot-status {
+      background: var(--bg-subtle);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .slot-meta-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .slot-meta-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-top: 1px;
+    }
+    .slot-meta-desc {
+      font-size: 13px;
+      color: var(--ocean-primary);
+      margin-top: 2px;
+    }
+
+    /* Modal Dialog for Drag and Drop */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(12, 35, 64, 0.48);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      z-index: 9000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal-panel {
+      width: 100%;
+      max-width: 860px;
+      max-height: 85vh;
+      overflow-y: auto;
+      border-radius: var(--radius);
+      background: #ffffff;
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 12px 32px rgba(12, 35, 64, 0.18); /* taste-skill-ignore */
+    }
+    .modal-head {
+      padding: 14px 20px;
+      /* tone step used */
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-subtle);
+    }
+    .modal-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .modal-close-btn {
+      background: #ffffff;
+      border: 1px solid var(--glass-border-subtle);
+      color: var(--text-muted);
+      width: 28px; height: 28px;
+      border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+    .modal-close-btn:hover {
+      background: #f1f5f9;
+      color: var(--text-main);
+    }
+    .modal-body { padding: 20px; }
+
+    .field-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--ocean-primary);
+      margin-bottom: 10px;
+      text-transform: none;
+    }
+
+    .modules-picker {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    @media (max-width: 640px) { .modules-picker { grid-template-columns: 1fr; } }
+
+    .draggable-card {
+      background: var(--bg-subtle);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      cursor: grab;
+      user-select: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .draggable-card:hover {
+      border-color: var(--ocean-primary);
+      background: var(--bg-card-tint);
+    }
+    .draggable-card.dragging {
+      opacity: 0.45;
+      cursor: grabbing;
+      border-style: dashed;
+    }
+    .card-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .card-name { font-size: 15px; font-weight: 700; color: var(--text-main); }
+    .card-category { font-size: 13px; color: var(--text-muted); }
+    .card-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.4; }
+    .card-specs {
+      font-size: 13px;
+      background: #ffffff;
+      border: 1px solid var(--glass-border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+    .card-specs b { color: var(--text-main); }
+
+    .card-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 8px;
+      /* tone step used */
+      margin-top: auto;
+    }
+    .drag-hint { font-size: 13px; color: var(--text-muted); }
+    .quick-attach-group { display: flex; gap: 6px; }
+    .btn-quick {
+      padding: 4px 10px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--glass-border);
+      background: #ffffff;
+      color: var(--ocean-primary);
+      cursor: pointer;
+    }
+    .btn-quick:hover {
+      background: var(--ocean-light);
+      border-color: var(--ocean-primary);
+    }
+
+    .dropzone-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 640px) { .dropzone-grid { grid-template-columns: 1fr; } }
+
+    .drop-slot {
+      background: var(--bg-subtle);
+      border: 1.5px dashed var(--glass-border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 140px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .drop-slot.drag-over {
+      border-color: var(--ocean-primary);
+      background: var(--ocean-light);
+    }
+    .drop-slot.occupied {
+      border-style: solid;
+      border-color: var(--glass-border);
+      background: #ffffff;
+    }
+
+    .slot-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 8px;
+      /* tone step used */
+    }
+    .slot-heading {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .slot-badge {
+      font-size: 13px;
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-subtle);
+      border: 1px solid var(--glass-border-subtle);
+      color: var(--text-muted);
+    }
+    .slot-badge.active {
+      background: var(--status-green-bg);
+      border-color: var(--status-green-border);
+      color: var(--status-green);
+    }
+
+    .slot-empty-view {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      color: var(--text-muted);
+      font-size: 13px;
+      text-align: center;
+    }
+    .slot-filled-view {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .filled-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .filled-title { font-size: 14px; font-weight: 700; color: var(--text-main); }
+    .filled-role { font-size: 13px; color: var(--ocean-primary); font-weight: 600; }
+    .filled-spec { font-size: 13px; color: var(--text-muted); }
+    .slot-action-row {
+      display: flex;
+      gap: 8px;
+      margin-top: auto;
+      padding-top: 8px;
+      /* tone step used */
+    }
+    .btn-slot {
+      flex: 1;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--glass-border);
+      background: #ffffff;
+      color: var(--text-main);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+    .btn-slot:hover {
+      background: #f1f5f9;
+    }
+    .btn-slot.primary {
+      background: var(--ocean-primary);
+      border-color: var(--ocean-primary);
+      color: #ffffff;
+    }
+    .btn-slot.primary:hover {
+      background: var(--ocean-hover);
+    }
+    .btn-slot.detach {
+      flex: 0 0 auto;
+      color: var(--text-muted);
+    }
+    .btn-slot.detach:hover {
+      color: var(--status-red);
+      background: var(--status-red-bg);
+      border-color: var(--status-red-border);
+    }
+
+    .telemetry-console {
+      background: var(--bg-subtle);
+      border: 1px solid var(--glass-border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+    }
+    .console-top {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .console-top span { cursor: pointer; text-decoration: underline; }
+    .console-lines {
+      font-size: 13px;
+      max-height: 80px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+    .c-line {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      color: var(--text-secondary);
+    }
+    .c-time { color: var(--text-muted); flex-shrink: 0; }
+    .c-tag { font-weight: 600; }
+    .c-tag.attach { color: var(--ocean-primary); }
+    .c-tag.execute { color: var(--status-green); }
+    .c-tag.detach { color: var(--status-amber); }
+    .c-msg { color: var(--text-main); word-break: break-word; }
+
+    /* Toast */
+    .toast-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 9999;
+      pointer-events: none;
+    }
+    .toast {
+      background: #ffffff;
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 8px 24px rgba(12, 35, 64, 0.14); /* taste-skill-ignore */
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 280px;
+      max-width: 400px;
+      pointer-events: auto;
+    }
+    .toast-title { font-size: 14px; font-weight: 700; color: var(--text-main); }
+    .toast-msg { font-size: 13px; color: var(--text-secondary); margin-top: 1px; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1>Fall Detector</h1>
-      <div class="header-right">
-        <button id="robotBtn" class="ble-btn" onclick="toggleSeek()" disabled>Robot offline</button>
-        <button id="bleBtn" class="ble-btn" onclick="connectBLE()">Connect BLE</button>
-        <div class="conn"><span class="dot" id="dot"></span><span id="connText">Initializing</span></div>
-      </div>
-    </header>
 
-    <div class="grid">
-      <div class="video-wrap">
-        <img id="feed" src="http://localhost:5001/video" alt="" onerror="onFeedError()">
-        <video id="webcam" autoplay playsinline style="display:none;"></video>
-        <div class="camera-fallback" id="camFallback">
-          <span>Backend video stream offline</span>
-          <button class="ble-btn" id="webcamBtn" onclick="toggleWebcam()">Start Local Camera</button>
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="nav-left">
+      <h1 class="nav-title">Fall Detection & Robot Control</h1>
+      <div class="nav-tagline">BLE Accelerometer & YOLOv8 Camera Monitoring</div>
+    </div>
+    <div class="nav-right">
+      <div class="status-badge" id="systemBadge">
+        <span class="dot" id="sysDot"></span>
+        <span id="sysLabel">Disconnected</span>
+      </div>
+      <button class="btn btn-primary" id="bleBtn" onclick="connectBLE()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>
+        Connect BLE
+      </button>
+      <button class="btn" onclick="openModulesModal()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m9 10 2 2 4-4"/></svg>
+        Robot Modules
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main Content Dashboard -->
+  <main class="page">
+
+    <!-- Top Grid: Patient / Fall Detector Status & Live Camera Feed -->
+    <div class="top-grid">
+
+      <!-- Patient & Fall Detector Card -->
+      <div class="card" data-ui="patient-panel">
+        <div class="card-head">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+            Fall Detection & Patient State
+            <span class="card-subtitle">Chest Piece Accelerometer</span>
+          </div>
+          <div class="status-badge" id="patientStatusBadge">
+            <span class="dot on" id="patientStatusDot"></span>
+            <span id="patientStatusText">Normal</span>
+          </div>
         </div>
-        <div class="banner" id="banner"></div>
+
+        <div class="patient-body">
+          <div class="heart-container">
+            <div class="heart-shape" id="heartShape">
+              <svg viewBox="0 0 100 90" class="heart-svg">
+                <!-- Main Heart Shape in Ocean Blue -->
+                <path d="M50 82 C20 58 5 40 5 24 C5 11 15 2 28 2 C37 2 45 7 50 15 C55 7 63 2 72 2 C85 2 95 11 95 24 C95 40 80 58 50 82 Z" fill="#0284c7" />
+                <!-- 3D Shading on Left Lobe for Liquid Depth -->
+                <path d="M50 82 C20 58 5 40 5 24 C5 11 15 2 28 2 C37 2 45 7 50 15 L50 82 Z" fill="#0369a1" opacity="0.32" />
+                <!-- Liquid Glass Specular Highlight -->
+                <path d="M26 8 C18 8 12 14 12 22 C12 30 20 40 32 50 C24 40 20 32 20 24 C20 16 24 11 30 10 C34 9 39 11 43 15 L45 13 C40 9 33 8 26 8 Z" fill="#ffffff" opacity="0.65" />
+                <!-- Center Core Light -->
+                <circle cx="50" cy="35" r="14" fill="#38bdf8" opacity="0.35" />
+              </svg>
+            </div>
+          </div>
+
+          <div class="patient-status-info">
+            <div>
+              <div class="status-heading">Current System Status</div>
+              <div class="status-primary" id="statusHeadline">Monitoring: Normal Activity</div>
+              <div class="status-desc" id="statusDescription">
+                Live accelerometer telemetry streamed from wearable chest sensor via Bluetooth. Double-tap chest piece to cancel accidental fall alerts.
+              </div>
+            </div>
+
+            <div class="simulation-controls">
+              <button class="btn" onclick="f('/simulate/fall')">Simulate Fall</button>
+              <button class="btn btn-danger" onclick="simulateEmergencyWithModules()">Simulate Emergency</button>
+              <button class="btn" onclick="f('/simulate/reset')">Reset Alarm</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="metrics-bar">
+          <div class="metric-cell">
+            <div class="metric-label">Current Acceleration</div>
+            <div class="metric-val" id="mG">-<span class="unit">g</span></div>
+            <div class="metric-desc">G-Force Magnitude</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-label">Patient Movement</div>
+            <div class="metric-val" id="mAct">-</div>
+            <div class="metric-desc">Activity Level</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-label">Average Response Time</div>
+            <div class="metric-val" id="mResp">-</div>
+            <div class="metric-desc">Fall to Cancelled</div>
+          </div>
+        </div>
       </div>
 
-      <div class="panel">
-        <div class="metrics">
-          <div class="metric">
-            <div class="metric-label">G-Force</div>
-            <div class="metric-val" id="mG">—</div>
+      <!-- Robot Camera & Target Tracking -->
+      <div class="card" data-ui="camera-panel">
+        <div class="card-head">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            Robot Camera Feed
+            <span class="card-subtitle">YOLOv8 Person Detection</span>
           </div>
-          <div class="metric">
-            <div class="metric-label">Activity</div>
-            <div class="metric-val" id="mAct">—</div>
+          <button class="btn" onclick="toggleWebcam()">Toggle Camera</button>
+        </div>
+
+        <div class="feed-container">
+          <div class="feed-overlay-top">
+            <div class="feed-badge"><span class="dot"></span> Live Stream</div>
+            <div class="feed-badge" id="camPersonBadge" style="display:none;">Person Detected</div>
           </div>
-          <div class="metric">
-            <div class="metric-label">People</div>
-            <div class="metric-val" id="mPpl">—</div>
+
+          <img id="feed" src="http://localhost:5001/video" alt="" onerror="onFeedError()">
+          <video id="webcam" autoplay playsinline style="display:none;"></video>
+
+          <div class="feed-fallback" id="camFallback">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+            <div>Backend video stream offline</div>
+            <button class="btn btn-primary" id="webcamBtn" onclick="toggleWebcam()">Start Local Camera</button>
           </div>
-          <div class="metric">
-            <div class="metric-label">Falls</div>
+          <div class="alert-banner" id="banner"></div>
+        </div>
+
+        <div class="feed-status-bar">
+          <div class="feed-status-text">
+            Navigation Target: <b id="targetText">Searching for Person</b>
+          </div>
+          <div class="feed-status-text">
+            People in View: <b id="mPpl">0</b>
+          </div>
+        </div>
+
+        <div class="metrics-bar">
+          <div class="metric-cell">
+            <div class="metric-label">Logged Incidents</div>
             <div class="metric-val" id="mFalls">0</div>
+            <div class="metric-desc">Fall Events</div>
           </div>
-          <div class="metric">
-            <div class="metric-label">Avg Response</div>
-            <div class="metric-val" id="mResp">—</div>
+          <div class="metric-cell">
+            <div class="metric-label">Bluetooth Status</div>
+            <div class="metric-val" id="mBle">-</div>
+            <div class="metric-desc">Arduino Link</div>
           </div>
-          <div class="metric">
-            <div class="metric-label">BLE</div>
-            <div class="metric-val" id="mBle">—</div>
+          <div class="metric-cell">
+            <div class="metric-label">Session Uptime</div>
+            <div class="metric-val" id="sessionTime">00:00:00</div>
+            <div class="metric-desc">Console Runtime</div>
           </div>
         </div>
+      </div>
 
-        <div class="chart-box">
-          <div class="chart-label">G-Force</div>
+    </div>
+
+    <!-- Middle: Equipped Manipulator Arms Strip -->
+    <div class="card arms-card" data-ui="arms-panel">
+      <div class="card-head">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          Equipped Manipulator Arms
+          <span class="card-subtitle">Active Medical Attachments</span>
+        </div>
+        <button class="btn" onclick="openModulesModal()">Manage Attachments</button>
+      </div>
+
+      <div class="arms-overview">
+        <!-- Left Arm Overview -->
+        <div class="arm-slot-status" id="mainSlotLeft">
+          <div>
+            <div class="slot-meta-label">Left Arm Slot</div>
+            <div class="slot-meta-name" id="mainSlotLeftName">Unassigned</div>
+            <div class="slot-meta-desc" id="mainSlotLeftDesc">No component equipped</div>
+          </div>
+          <div id="mainSlotLeftBtn"></div>
+        </div>
+
+        <!-- Right Arm Overview -->
+        <div class="arm-slot-status" id="mainSlotRight">
+          <div>
+            <div class="slot-meta-label">Right Arm Slot</div>
+            <div class="slot-meta-name" id="mainSlotRightName">Unassigned</div>
+            <div class="slot-meta-desc" id="mainSlotRightDesc">No component equipped</div>
+          </div>
+          <div id="mainSlotRightBtn"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Grid: Live G-Force Chart & Incident History Log -->
+    <div class="bottom-grid">
+
+      <!-- Live G-Force Chart -->
+      <div class="card" data-ui="telemetry-panel">
+        <div class="card-head">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Live Accelerometer Telemetry
+            <span class="card-subtitle">Last 60 Seconds</span>
+          </div>
+        </div>
+        <div class="chart-container">
           <canvas id="gChart"></canvas>
         </div>
+        <div class="chart-footer">
+          <span>Threshold: 1.50g impact triggers fall alert</span>
+          <span id="wfStats">Data Points: 0</span>
+        </div>
       </div>
 
-      <div class="log-section">
-        <div class="log-label">Fall History</div>
-        <table>
-          <thead><tr><th>Time</th><th>Impact</th><th>Outcome</th><th>Response</th></tr></thead>
-          <tbody id="fallBody"><tr><td class="empty-row" colspan="4">No falls yet</td></tr></tbody>
-        </table>
+      <!-- Incident Log -->
+      <div class="card" data-ui="log-panel">
+        <div class="card-head">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Incident History Log
+          </div>
+          <div class="status-badge" id="eventCount">0 Events</div>
+        </div>
+        <div class="incident-log-body" id="activityBody">
+          <div class="log-empty">No incidents logged yet</div>
+        </div>
       </div>
 
-      <div class="actions">
-        <button class="primary" onclick="connectBLE()">Connect BLE</button>
-        <button onclick="toggleWebcam()">Toggle Camera</button>
-        <button onclick="f('/simulate/fall')">Simulate fall</button>
-        <button onclick="f('/simulate/emergency')">Simulate emergency</button>
-        <button onclick="f('/simulate/reset')">Reset</button>
+    </div>
+
+  </main>
+
+  <!-- Modules Drag and Drop Popup Dialog -->
+  <div class="modal-overlay" id="modulesModal" onclick="if(event.target===this)closeModulesModal()">
+    <div class="modal-panel" data-ui="modal">
+      <div class="modal-head">
+        <div class="modal-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m9 10 2 2 4-4"/></svg>
+          Configure Robot Arm Attachments
+        </div>
+        <button class="modal-close-btn" onclick="closeModulesModal()" title="Close dialog">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="field-label">Available Medical Components (Drag to arm or click attach)</div>
+        <div class="modules-picker" id="modalModulesGrid"></div>
+
+        <div class="field-label">Manipulator Arm Mounting Bays</div>
+        <div class="dropzone-grid">
+
+          <!-- Left Arm Slot -->
+          <div class="drop-slot" id="slotLeftArm" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event,'left_arm')">
+            <div class="slot-top">
+              <div class="slot-heading">Left Manipulator Arm</div>
+              <div class="slot-badge" id="pillLeft">Unassigned</div>
+            </div>
+            <div id="contentLeft" class="slot-empty-view">
+              <div>Drop component here to mount on Left Arm</div>
+            </div>
+          </div>
+
+          <!-- Right Arm Slot -->
+          <div class="drop-slot" id="slotRightArm" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event,'right_arm')">
+            <div class="slot-top">
+              <div class="slot-heading">Right Manipulator Arm</div>
+              <div class="slot-badge" id="pillRight">Unassigned</div>
+            </div>
+            <div id="contentRight" class="slot-empty-view">
+              <div>Drop component here to mount on Right Arm</div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="telemetry-console">
+          <div class="console-top">
+            <div>Hardware Attachment Log</div>
+            <span onclick="clearConsole()">Clear</span>
+          </div>
+          <div class="console-lines" id="consoleStream">
+            <div class="c-line">
+              <span class="c-time">[INIT]</span>
+              <span class="c-tag attach">SYSTEM</span>
+              <span class="c-msg">Modular arm attachment bus online and standing by.</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- JavaScript Application Logic -->
   <script>
     const API = 'http://localhost:5001';
+    if (window.RobotModuleRegistry) RobotModuleRegistry.setApiBase(API);
     const f = path => fetch(API + path).catch(() => {});
-    // Robot bridge (robot/follow_bridge.py): go-to-person button + chest camera
-    const ROBOT = 'http://localhost:5002';
-    let robotOnline = false;
 
-    // --- Web Bluetooth UUIDs ---
+    // Session Timer
+    const sessionStart = Date.now();
+    function updateSessionTimer() {
+      const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+      const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+      const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+      const s = String(elapsed % 60).padStart(2, '0');
+      document.getElementById('sessionTime').textContent = `${h}:${m}:${s}`;
+    }
+    setInterval(updateSessionTimer, 1000);
+
+    // Bluetooth UUIDs
     const BLE_SERVICE_UUID = '19b10000-e8f2-537e-4f6c-d104768a1214';
     const FALL_CHAR_UUID   = '19b10001-e8f2-537e-4f6c-d104768a1214';
     const GFORCE_CHAR_UUID = '19b10002-e8f2-537e-4f6c-d104768a1214';
@@ -230,57 +1228,166 @@
     let bleGForceChar = null;
     let isWebBleConnected = false;
 
-    // Web BLE local tracking
     let localFallWaiting = false;
     let localFallStartTime = null;
     let localImpactG = 1.0;
     let localFalls = [];
-    const localGHistory = []; // {time, val}
+    const localGHistory = [];
     const MAX_G_POINTS = 60;
 
-    // Camera state
     let cameraStream = null;
     let feedErrorOccurred = false;
 
-    // Setup Chart.js
+    // Chart.js Accelerometer Waveform
     const ctx = document.getElementById('gChart').getContext('2d');
     const chart = new Chart(ctx, {
       type: 'line',
-      data: { labels: [], datasets: [{ data: [], borderColor: '#888', borderWidth: 1, pointRadius: 0, tension: 0.3, fill: false }] },
+      data: {
+        labels: [],
+        datasets: [{
+          data: [],
+          borderColor: '#0284c7',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.25,
+          fill: true,
+          backgroundColor: 'rgba(2, 132, 199, 0.08)'
+        }]
+      },
       options: {
-        responsive: false, animation: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { display: false },
-          y: { min: 0, max: 4, grid: { color: 'rgba(128,128,128,0.1)' }, ticks: { color: '#888', font: { size: 10 } } }
+          x: {
+            display: true,
+            grid: { color: 'rgba(15, 23, 42, 0.04)' },
+            ticks: { color: '#64748b', font: { size: 13 }, maxTicksLimit: 8 }
+          },
+          y: {
+            min: 0, max: 4,
+            grid: { color: 'rgba(15, 23, 42, 0.05)' },
+            ticks: { color: '#64748b', font: { size: 13 } }
+          }
         }
       }
     });
 
-    // --- Fall Table Renderer ---
+    // Clean Toast Notifications
+    function showToast(title, message) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.innerHTML = `
+        <div>
+          <div class="toast-title">${title}</div>
+          <div class="toast-msg">${message}</div>
+        </div>
+      `;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.2s';
+        setTimeout(() => toast.remove(), 200);
+      }, 3500);
+    }
+
+    // Incident Log Entries
+    function addActivityEntry(title, desc, dotClass = 'green') {
+      const body = document.getElementById('activityBody');
+      const empty = body.querySelector('.log-empty');
+      if (empty) empty.remove();
+
+      const entry = document.createElement('div');
+      entry.className = 'log-item';
+      entry.innerHTML = `
+        <span class="log-time">${new Date().toLocaleTimeString()}</span>
+        <span class="log-dot ${dotClass}"></span>
+        <div class="log-content">
+          <div class="log-title">${title}</div>
+          <div class="log-detail">${desc}</div>
+        </div>
+      `;
+      body.prepend(entry);
+
+      const count = body.querySelectorAll('.log-item').length;
+      document.getElementById('eventCount').textContent = `${count} Events`;
+    }
+
+    function logToConsole(type, tag, msg) {
+      const stream = document.getElementById('consoleStream');
+      const line = document.createElement('div');
+      line.className = 'c-line';
+      line.innerHTML = `
+        <span class="c-time">[${new Date().toLocaleTimeString()}]</span>
+        <span class="c-tag ${type}">${tag}</span>
+        <span class="c-msg">${msg}</span>
+      `;
+      stream.prepend(line);
+    }
+    function clearConsole() { document.getElementById('consoleStream').innerHTML = ''; }
+
     function renderFallTable(falls) {
-      const tbody = document.getElementById('fallBody');
+      const body = document.getElementById('activityBody');
+      body.innerHTML = '';
       if (!falls || falls.length === 0) {
-        tbody.innerHTML = '<tr><td class="empty-row" colspan="4">No falls yet</td></tr>';
+        body.innerHTML = '<div class="log-empty">No incidents logged yet</div>';
+        document.getElementById('eventCount').textContent = '0 Events';
+        return;
+      }
+      falls.slice().reverse().forEach(x => {
+        const entry = document.createElement('div');
+        entry.className = 'log-item';
+        const dotClass = x.outcome === 'emergency' ? 'red' : 'green';
+        const title = x.outcome === 'emergency' ? 'Emergency Dispatch' : 'Fall Alarm Cancelled';
+        entry.innerHTML = `
+          <span class="log-time">${x.time_str}</span>
+          <span class="log-dot ${dotClass}"></span>
+          <div class="log-content">
+            <div class="log-title">${title}</div>
+            <div class="log-detail">Peak Impact: ${x.impact_g ? x.impact_g.toFixed(2) + 'g' : '-'} | Response Time: ${(x.response_ms / 1000).toFixed(1)}s</div>
+          </div>
+        `;
+        body.appendChild(entry);
+      });
+      document.getElementById('eventCount').textContent = `${falls.length} Events`;
+    }
+
+    // Dynamic Patient & Heart State Updates
+    function updatePatientState(isEmergency, isFallWaiting) {
+      const badgeText = document.getElementById('patientStatusText');
+      const badgeDot = document.getElementById('patientStatusDot');
+      const headline = document.getElementById('statusHeadline');
+      const desc = document.getElementById('statusDescription');
+      const heart = document.getElementById('heartShape');
+
+      if (isEmergency) {
+        badgeText.textContent = 'Emergency';
+        badgeDot.style.background = 'var(--status-red)';
+        headline.textContent = 'Emergency: Robot Dispatched to Patient';
+        headline.style.color = 'var(--status-red)';
+        desc.textContent = 'No response confirmed within timeout period. Robot dispatched to navigate to patient location and administer equipped medical components.';
+        heart.style.animationDuration = '0.6s';
+      } else if (isFallWaiting) {
+        badgeText.textContent = 'Fall Detected';
+        badgeDot.style.background = 'var(--status-amber)';
+        headline.textContent = 'Fall Detected: Awaiting Patient Tap';
+        headline.style.color = 'var(--status-amber)';
+        desc.textContent = 'Significant impact detected on chest sensor. Waiting for patient confirmation. Double-tap chest piece to cancel.';
+        heart.style.animationDuration = '1.2s';
       } else {
-        tbody.innerHTML = falls.slice().reverse().map(x =>
-          `<tr><td>${x.time_str}</td><td>${x.impact_g ? x.impact_g.toFixed(2)+'g' : '—'}</td><td><span class="tag ${x.outcome}">${x.outcome}</span></td><td>${(x.response_ms/1000).toFixed(1)}s</td></tr>`
-        ).join('');
+        badgeText.textContent = 'Normal';
+        badgeDot.style.background = 'var(--status-green)';
+        headline.textContent = 'Monitoring: Normal Activity';
+        headline.style.color = 'var(--text-main)';
+        desc.textContent = 'Live accelerometer telemetry streamed from wearable chest sensor via Bluetooth. Double-tap chest piece to cancel accidental fall alerts.';
+        heart.style.animationDuration = '2.4s';
       }
     }
 
-    // --- Local Camera Fallback ---
+    // Camera Fallback
     function onFeedError() {
-      // Backend camera offline: show the robot's chest camera instead if the bridge is up
-      if (robotOnline && !cameraStream) {
-        const feed = document.getElementById('feed');
-        if (!feed.src.startsWith(ROBOT)) {
-          feed.src = ROBOT + '/video?' + Date.now();
-          feed.style.display = 'block';
-          document.getElementById('camFallback').style.display = 'none';
-        }
-        return;
-      }
       if (!feedErrorOccurred && !cameraStream) {
         feedErrorOccurred = true;
         document.getElementById('feed').style.display = 'none';
@@ -318,20 +1425,20 @@
         fallbackEl.style.display = 'none';
         if (btn) btn.textContent = 'Stop Local Camera';
       } catch (err) {
-        alert('Could not access webcam: ' + err.message);
+        alert('Could not access camera: ' + err.message);
       }
     }
 
-    // --- Web Bluetooth ---
+    // Bluetooth GATT
     async function connectBLE() {
       if (!navigator.bluetooth) {
-        alert('Web Bluetooth is not supported in this browser.\nPlease use Google Chrome or Microsoft Edge.');
+        alert('Web Bluetooth is not supported in this browser. Please use Google Chrome or Microsoft Edge.');
         return;
       }
 
-      const bleBtn = document.getElementById('bleBtn');
-      bleBtn.textContent = 'Scanning...';
-      bleBtn.className = 'ble-btn connecting';
+      const sysLabel = document.getElementById('sysLabel');
+      const sysDot = document.getElementById('sysDot');
+      sysLabel.textContent = 'Scanning...';
 
       try {
         bleDevice = await navigator.bluetooth.requestDevice({
@@ -341,16 +1448,14 @@
 
         bleDevice.addEventListener('gattserverdisconnected', onBLEDisconnected);
 
-        bleBtn.textContent = 'Connecting...';
+        sysLabel.textContent = 'Connecting...';
         const server = await bleDevice.gatt.connect();
         const service = await server.getPrimaryService(BLE_SERVICE_UUID);
 
-        // Fall characteristic
         bleFallChar = await service.getCharacteristic(FALL_CHAR_UUID);
         await bleFallChar.startNotifications();
         bleFallChar.addEventListener('characteristicvaluechanged', onFallCharacteristicChanged);
 
-        // G-force characteristic
         try {
           bleGForceChar = await service.getCharacteristic(GFORCE_CHAR_UUID);
           await bleGForceChar.startNotifications();
@@ -360,21 +1465,19 @@
         }
 
         isWebBleConnected = true;
-        bleBtn.textContent = 'BLE Connected';
-        bleBtn.className = 'ble-btn connected';
+        sysLabel.textContent = 'BLE Connected';
+        sysDot.className = 'dot on';
 
-        const bleEl = document.getElementById('mBle');
-        bleEl.textContent = 'Connected';
-        bleEl.className = 'metric-val green';
+        document.getElementById('mBle').innerHTML = '<span style="color:var(--status-green);font-weight:600;">Connected</span>';
+        document.getElementById('bleBtn').textContent = 'BLE Connected';
 
-        document.getElementById('dot').className = 'dot on';
-        document.getElementById('connText').textContent = 'Monitoring (Web BLE)';
+        addActivityEntry('BLE Connected', 'Paired with FallDetector chest piece via Web Bluetooth', 'green');
       } catch (err) {
         console.error('BLE connection failed:', err);
         isWebBleConnected = false;
-        bleBtn.textContent = 'Connect BLE';
-        bleBtn.className = 'ble-btn';
-        if (err.name !== 'NotFoundError') { // User didn't just cancel
+        sysLabel.textContent = 'Disconnected';
+        sysDot.className = 'dot';
+        if (err.name !== 'NotFoundError') {
           alert('Bluetooth error: ' + err.message);
         }
       }
@@ -382,17 +1485,12 @@
 
     function onBLEDisconnected() {
       isWebBleConnected = false;
-      const bleBtn = document.getElementById('bleBtn');
-      bleBtn.textContent = 'Connect BLE';
-      bleBtn.className = 'ble-btn';
-
-      const bleEl = document.getElementById('mBle');
-      bleEl.textContent = 'Off';
-      bleEl.className = 'metric-val';
-
-      document.getElementById('dot').className = 'dot';
-      document.getElementById('connText').textContent = 'Disconnected';
+      document.getElementById('sysLabel').textContent = 'Disconnected';
+      document.getElementById('sysDot').className = 'dot';
+      document.getElementById('mBle').textContent = 'Disconnected';
+      document.getElementById('bleBtn').textContent = 'Connect BLE';
       document.getElementById('banner').style.display = 'none';
+      addActivityEntry('BLE Disconnected', 'Bluetooth connection to chest piece lost', 'amber');
     }
 
     function onFallCharacteristicChanged(event) {
@@ -401,91 +1499,76 @@
       const now = Date.now();
 
       if (val === 0) {
-        // Normal state
         if (localFallWaiting && localFallStartTime) {
           const responseMs = now - localFallStartTime;
-          localFalls.push({
-            time_str: new Date().toLocaleTimeString(),
-            impact_g: localImpactG,
-            outcome: 'cancelled',
-            response_ms: responseMs
-          });
+          localFalls.push({ time_str: new Date().toLocaleTimeString(), impact_g: localImpactG, outcome: 'cancelled', response_ms: responseMs });
           renderFallTable(localFalls);
           updateAvgResponse();
+          addActivityEntry('Fall Cancelled', `Patient double-tapped chest piece in ${(responseMs / 1000).toFixed(1)}s (Impact: ${localImpactG.toFixed(2)}g)`, 'green');
         }
         localFallWaiting = false;
         localFallStartTime = null;
-
         banner.style.display = 'none';
-        document.getElementById('dot').className = 'dot on';
-        document.getElementById('connText').textContent = 'Monitoring (Web BLE)';
+        document.getElementById('targetText').textContent = 'Searching for Person';
+        updatePatientState(false, false);
         f('/simulate/reset');
       } else if (val === 1) {
-        // Fall detected — waiting for user double-tap
         localFallWaiting = true;
         localFallStartTime = now;
-
-        banner.className = 'banner warn';
+        banner.className = 'alert-banner warn';
         banner.style.display = 'block';
-        banner.textContent = 'Fall detected — waiting for response (double-tap chest piece)';
-
-        document.getElementById('dot').className = 'dot warn';
-        document.getElementById('connText').textContent = 'Fall detected';
+        banner.textContent = 'Fall detected: Waiting for user confirmation (double-tap chest piece)';
+        document.getElementById('targetText').textContent = 'Patient Fall Detected';
+        updatePatientState(false, true);
+        addActivityEntry('Fall Alert', 'Impact detected by chest piece. Waiting for confirmation tap.', 'amber');
         f('/simulate/fall');
       } else if (val === 2) {
-        // Emergency state
         const responseMs = localFallStartTime ? (now - localFallStartTime) : 5000;
-        localFalls.push({
-          time_str: new Date().toLocaleTimeString(),
-          impact_g: localImpactG,
-          outcome: 'emergency',
-          response_ms: responseMs
-        });
+        localFalls.push({ time_str: new Date().toLocaleTimeString(), impact_g: localImpactG, outcome: 'emergency', response_ms: responseMs });
         localFallWaiting = false;
         localFallStartTime = null;
-
         renderFallTable(localFalls);
         updateAvgResponse();
-
-        banner.className = 'banner crit';
+        banner.className = 'alert-banner crit';
         banner.style.display = 'block';
-        banner.textContent = 'EMERGENCY — No response — Robot dispatched!';
-
-        document.getElementById('dot').className = 'dot crit';
-        document.getElementById('connText').textContent = 'Emergency';
+        banner.textContent = 'Emergency: No response from patient. Robot dispatched to location.';
+        document.getElementById('targetText').textContent = 'Navigating to Patient';
+        updatePatientState(true, false);
+        addActivityEntry('Emergency Dispatched', 'No response within timeout. Robot dispatched to assist patient.', 'red');
         f('/simulate/emergency');
+
+        const attached = RobotModuleRegistry.getAttached();
+        ['right_arm', 'left_arm'].forEach(slot => {
+          if (attached[slot]) triggerModuleFeature(slot);
+        });
       }
 
       document.getElementById('mFalls').textContent = localFalls.length;
     }
 
     function onGForceCharacteristicChanged(event) {
-      const raw = event.target.value.getUint16(0, true); // uint16 little-endian
+      const raw = event.target.value.getUint16(0, true);
       const g = raw / 100.0;
       localImpactG = g;
 
-      // Update G-Force metric
       const mG = document.getElementById('mG');
-      mG.textContent = g.toFixed(2) + 'g';
+      mG.innerHTML = `${g.toFixed(2)}<span class="unit">g</span>`;
       mG.className = 'metric-val' + (g > 1.5 ? ' red' : '');
 
-      // Maintain local history for chart
       const timeStr = new Date().toLocaleTimeString();
       localGHistory.push({ time: timeStr, val: g });
       if (localGHistory.length > MAX_G_POINTS) localGHistory.shift();
 
-      // Compute activity level
       if (localGHistory.length >= 10) {
         const recent = localGHistory.slice(-30).map(x => x.val);
         const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
         const variance = recent.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / recent.length;
         const actEl = document.getElementById('mAct');
-        if (variance > 0.15) actEl.textContent = 'high';
-        else if (variance > 0.03) actEl.textContent = 'medium';
-        else actEl.textContent = 'low';
+        if (variance > 0.15) actEl.textContent = 'High';
+        else if (variance > 0.03) actEl.textContent = 'Medium';
+        else actEl.textContent = 'Low';
       }
 
-      // Update Chart
       chart.data.labels = localGHistory.map(x => x.time);
       chart.data.datasets[0].data = localGHistory.map(x => x.val);
       chart.update();
@@ -493,11 +1576,22 @@
 
     function updateAvgResponse() {
       const cancelled = localFalls.filter(x => x.outcome === 'cancelled');
-      const avg = cancelled.length ? (cancelled.reduce((a, x) => a + x.response_ms, 0) / cancelled.length / 1000).toFixed(1) + 's' : '—';
+      const avg = cancelled.length ? (cancelled.reduce((a, x) => a + x.response_ms, 0) / cancelled.length / 1000).toFixed(1) + 's' : '-';
       document.getElementById('mResp').textContent = avg;
     }
 
-    // --- Backend Server Polling (Runs in parallel) ---
+    function simulateEmergencyWithModules() {
+      f('/simulate/emergency');
+      updatePatientState(true, false);
+      addActivityEntry('Simulated Emergency', 'Emergency alert triggered. Deploying equipped arm modules.', 'red');
+
+      const attached = RobotModuleRegistry.getAttached();
+      ['right_arm', 'left_arm'].forEach(slot => {
+        if (attached[slot]) triggerModuleFeature(slot);
+      });
+    }
+
+    // Backend Polling
     async function tick() {
       try {
         const [s, g, fl] = await Promise.all([
@@ -506,7 +1600,6 @@
           fetch(API + '/falls').then(r => r.json())
         ]);
 
-        // If backend is active and local webcam is not overriding, restore feed
         if (feedErrorOccurred && !cameraStream) {
           feedErrorOccurred = false;
           const feed = document.getElementById('feed');
@@ -516,48 +1609,69 @@
         }
 
         document.getElementById('mPpl').textContent = s.person_count;
+        if (s.person_count > 0) {
+          document.getElementById('camPersonBadge').style.display = 'flex';
+          document.getElementById('camPersonBadge').textContent = `People Detected: ${s.person_count}`;
+        } else {
+          document.getElementById('camPersonBadge').style.display = 'none';
+        }
 
-        // If Web BLE is NOT connected in browser, use backend server data
+        document.getElementById('sysLabel').textContent = s.ble_connected ? 'BLE Connected' : 'Disconnected';
+        document.getElementById('sysDot').className = 'dot' + (s.ble_connected ? ' on' : '');
+
         if (!isWebBleConnected) {
-          document.getElementById('mG').textContent = s.current_g.toFixed(2) + 'g';
-          document.getElementById('mG').className = 'metric-val' + (s.current_g > 1.5 ? ' red' : '');
-          document.getElementById('mAct').textContent = s.activity_level;
+          const mG = document.getElementById('mG');
+          mG.innerHTML = `${s.current_g.toFixed(2)}<span class="unit">g</span>`;
+          mG.className = 'metric-val' + (s.current_g > 1.5 ? ' red' : '');
+
+          document.getElementById('mAct').textContent = s.activity_level.charAt(0).toUpperCase() + s.activity_level.slice(1);
           document.getElementById('mFalls').textContent = fl.length;
 
           const bleEl = document.getElementById('mBle');
-          bleEl.textContent = s.ble_connected ? 'Connected' : 'Off';
-          bleEl.className = 'metric-val' + (s.ble_connected ? ' green' : '');
+          bleEl.innerHTML = s.ble_connected ? '<span style="color:var(--status-green);font-weight:600;">Connected</span>' : 'Disconnected';
 
-          document.getElementById('dot').className = 'dot' + (s.ble_connected ? ' on' : '');
-          document.getElementById('connText').textContent = s.emergency ? 'Emergency' : s.fall_waiting ? 'Fall detected' : s.ble_connected ? 'Monitoring' : 'No BLE';
+          if (s.emergency) {
+            document.getElementById('targetText').textContent = s.direction ? `Direction: ${s.direction}` : 'Scanning for Person';
+            updatePatientState(true, false);
+          } else if (s.fall_waiting) {
+            document.getElementById('targetText').textContent = 'Patient Fall Detected';
+            updatePatientState(false, true);
+          } else {
+            document.getElementById('targetText').textContent = s.person_count > 0 ? 'Tracking Person in View' : 'Searching for Person';
+            updatePatientState(false, false);
+          }
 
           const banner = document.getElementById('banner');
           if (s.emergency) {
-            banner.className = 'banner crit';
+            banner.className = 'alert-banner crit';
             banner.style.display = 'block';
-            banner.textContent = 'Emergency — seeking nearest person (' + (s.direction || 'scanning') + ')';
+            banner.textContent = 'Emergency: Navigating to patient (' + (s.direction || 'Searching') + ')';
           } else if (s.fall_waiting) {
-            banner.className = 'banner warn';
+            banner.className = 'alert-banner warn';
             banner.style.display = 'block';
-            banner.textContent = 'Fall detected — waiting for response';
+            banner.textContent = 'Fall detected: Waiting for user confirmation (double-tap chest piece)';
           } else {
             banner.style.display = 'none';
           }
 
           const cancelled = fl.filter(x => x.outcome === 'cancelled');
-          document.getElementById('mResp').textContent = cancelled.length ? (cancelled.reduce((a, x) => a + x.response_ms, 0) / cancelled.length / 1000).toFixed(1) + 's' : '—';
+          document.getElementById('mResp').textContent = cancelled.length ? (cancelled.reduce((a, x) => a + x.response_ms, 0) / cancelled.length / 1000).toFixed(1) + 's' : '-';
 
           chart.data.labels = g.timestamps.map(t => new Date(t * 1000).toLocaleTimeString());
           chart.data.datasets[0].data = g.values;
           chart.update();
+
+          if (g.values.length > 0) {
+            document.getElementById('wfStats').textContent = `Data Points: ${g.values.length}`;
+          }
 
           renderFallTable(fl);
         }
       } catch (e) {
         onFeedError();
         if (!isWebBleConnected) {
-          document.getElementById('connText').textContent = 'Server offline';
-          document.getElementById('dot').className = 'dot';
+          document.getElementById('sysLabel').textContent = 'Disconnected';
+          document.getElementById('sysDot').className = 'dot';
         }
       }
     }
@@ -565,56 +1679,222 @@
     setInterval(tick, 800);
     tick();
 
-    // --- Robot: go to nearest person / return ---
-    const ROBOT_LABELS = {
-      follow:    ['Go to nearest person', ''],
-      seeking:   ['Heading to person (press to return)', 'connecting'],
-      scanning:  ['Looking for a person (press to return)', 'connecting'],
-      arrived:   ['Arrived, press to return', 'connected'],
-      returning: ['Returning (press to cancel)', 'connecting'],
-    };
-
-    function showRobot(s) {
-      const btn = document.getElementById('robotBtn');
-      if (!s) {
-        btn.textContent = 'Robot offline';
-        btn.className = 'ble-btn';
-        btn.disabled = true;
-        return;
-      }
-      const [label, cls] = ROBOT_LABELS[s.mode] || [s.mode, ''];
-      btn.disabled = s.mode === 'follow' && !s.camera;
-      btn.textContent = btn.disabled ? 'Robot camera off' : (s.emergency ? 'Fall: ' : '') + label;
-      btn.className = 'ble-btn' + (cls ? ' ' + cls : '');
+    // Robot Manipulator Modules Modal & Overview Sync
+    function openModulesModal() {
+      document.getElementById('modulesModal').classList.add('open');
+      renderModalModules();
+      renderModalSlots();
     }
 
-    async function robotTick() {
+    function closeModulesModal() {
+      document.getElementById('modulesModal').classList.remove('open');
+    }
+
+    function updateMainArmOverview() {
+      const attached = RobotModuleRegistry.getAttached();
+
+      // Left Arm
+      const leftMod = attached.left_arm;
+      const leftNameEl = document.getElementById('mainSlotLeftName');
+      const leftDescEl = document.getElementById('mainSlotLeftDesc');
+      const leftBtnEl = document.getElementById('mainSlotLeftBtn');
+      if (leftMod) {
+        leftNameEl.textContent = leftMod.name;
+        leftDescEl.textContent = leftMod.slotBehaviors.left_arm.role;
+        leftBtnEl.innerHTML = `
+          <button class="btn btn-primary" onclick="triggerModuleFeature('left_arm')">Run</button>
+        `;
+      } else {
+        leftNameEl.textContent = 'Unassigned';
+        leftDescEl.textContent = 'Click Manage Attachments to equip';
+        leftBtnEl.innerHTML = '';
+      }
+
+      // Right Arm
+      const rightMod = attached.right_arm;
+      const rightNameEl = document.getElementById('mainSlotRightName');
+      const rightDescEl = document.getElementById('mainSlotRightDesc');
+      const rightBtnEl = document.getElementById('mainSlotRightBtn');
+      if (rightMod) {
+        rightNameEl.textContent = rightMod.name;
+        rightDescEl.textContent = rightMod.slotBehaviors.right_arm.role;
+        rightBtnEl.innerHTML = `
+          <button class="btn btn-primary" onclick="triggerModuleFeature('right_arm')">Run</button>
+        `;
+      } else {
+        rightNameEl.textContent = 'Unassigned';
+        rightDescEl.textContent = 'Click Manage Attachments to equip';
+        rightBtnEl.innerHTML = '';
+      }
+    }
+
+    function renderModalModules() {
+      const container = document.getElementById('modalModulesGrid');
+      if (!container || !window.RobotModuleRegistry) return;
+
+      const modules = RobotModuleRegistry.getAll();
+      container.innerHTML = modules.map(mod => `
+        <div class="draggable-card" id="mod-${mod.id}" draggable="true"
+             ondragstart="handleDragStart(event,'${mod.id}')"
+             ondragend="handleDragEnd(event)">
+          <div class="card-top">
+            <div class="card-icon" style="background:${mod.accentBg}; color:${mod.color};">
+              ${mod.icon}
+            </div>
+            <div>
+              <div class="card-name">${mod.name}</div>
+              <div class="card-category">${mod.category}</div>
+            </div>
+          </div>
+          <div class="card-desc">${mod.description}</div>
+          <div class="card-specs">
+            <div><b>Left Arm Function:</b> ${mod.slotBehaviors.left_arm.role}</div>
+            <div><b>Right Arm Function:</b> ${mod.slotBehaviors.right_arm.role}</div>
+          </div>
+          <div class="card-actions">
+            <div class="drag-hint">Drag to arm dock</div>
+            <div class="quick-attach-group">
+              <button class="btn-quick" onclick="quickAttach('left_arm','${mod.id}')">+ Left Arm</button>
+              <button class="btn-quick" onclick="quickAttach('right_arm','${mod.id}')">+ Right Arm</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderModalSlot(slot) {
+      const isLeft = slot === 'left_arm';
+      const slotEl = document.getElementById(isLeft ? 'slotLeftArm' : 'slotRightArm');
+      const pill = document.getElementById(isLeft ? 'pillLeft' : 'pillRight');
+      const content = document.getElementById(isLeft ? 'contentLeft' : 'contentRight');
+      const attached = RobotModuleRegistry.getAttached()[slot];
+      const armLabel = isLeft ? 'Left Arm' : 'Right Arm';
+
+      if (!attached) {
+        slotEl.className = 'drop-slot';
+        pill.className = 'slot-badge';
+        pill.textContent = 'Unassigned';
+        content.className = 'slot-empty-view';
+        content.innerHTML = `<div>Drop component here to mount on ${armLabel}</div>`;
+      } else {
+        slotEl.className = 'drop-slot occupied';
+        pill.className = 'slot-badge active';
+        pill.textContent = 'Equipped';
+        const behavior = attached.slotBehaviors[slot];
+        content.className = 'slot-filled-view';
+        content.innerHTML = `
+          <div class="filled-header">
+            <div class="card-icon" style="background:${attached.accentBg}; color:${attached.color};">
+              ${attached.icon}
+            </div>
+            <div>
+              <div class="filled-title">${attached.name}</div>
+              <div class="filled-role">${behavior.role}</div>
+              <div class="filled-spec">${behavior.spec}</div>
+            </div>
+          </div>
+          <div class="slot-action-row">
+            <button class="btn-slot primary" onclick="triggerModuleFeature('${slot}')">
+              ${behavior.defaultActionLabel || 'Execute'}
+            </button>
+            <button class="btn-slot detach" onclick="detachFromSlot('${slot}')">
+              Detach
+            </button>
+          </div>
+        `;
+      }
+    }
+
+    function renderModalSlots() {
+      renderModalSlot('left_arm');
+      renderModalSlot('right_arm');
+      updateMainArmOverview();
+    }
+
+    let draggedModuleId = null;
+
+    function handleDragStart(e, moduleId) {
+      draggedModuleId = moduleId;
+      e.dataTransfer.setData('text/plain', moduleId);
+      e.dataTransfer.effectAllowed = 'copyMove';
+      const card = document.getElementById(`mod-${moduleId}`);
+      if (card) card.classList.add('dragging');
+    }
+
+    function handleDragEnd(e) {
+      draggedModuleId = null;
+      document.querySelectorAll('.draggable-card').forEach(c => c.classList.remove('dragging'));
+      document.querySelectorAll('.drop-slot').forEach(c => c.classList.remove('drag-over'));
+    }
+
+    function handleDragOver(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      e.currentTarget.classList.add('drag-over');
+    }
+
+    function handleDragLeave(e) {
+      e.currentTarget.classList.remove('drag-over');
+    }
+
+    async function handleDrop(e, slot) {
+      e.preventDefault();
+      e.currentTarget.classList.remove('drag-over');
+      const moduleId = e.dataTransfer.getData('text/plain') || draggedModuleId;
+      if (!moduleId) return;
+      await attachModuleToSlot(slot, moduleId);
+    }
+
+    async function quickAttach(slot, moduleId) {
+      await attachModuleToSlot(slot, moduleId);
+    }
+
+    async function attachModuleToSlot(slot, moduleId) {
+      const armName = slot === 'left_arm' ? 'Left Arm' : 'Right Arm';
       try {
-        const s = await fetch(ROBOT + '/status').then(r => r.json());
-        const wasOnline = robotOnline;
-        robotOnline = true;
-        showRobot(s);
-        if (!wasOnline) {
-          const feed = document.getElementById('feed');
-          if (feed.src.startsWith(ROBOT)) feed.src = ROBOT + '/video?' + Date.now();   // bridge restarted
-          else if (feedErrorOccurred) onFeedError();
-        }
-      } catch (e) {
-        robotOnline = false;
-        showRobot(null);
+        const result = await RobotModuleRegistry.attach(slot, moduleId);
+        renderModalSlots();
+
+        const mod = result.module;
+        const exec = result.execResult || {};
+        showToast(`${mod.name} Equipped`, `Mounted on ${armName}. Function: ${exec.message || 'Ready'}`);
+        logToConsole('attach', `ATTACH [${armName}]`, `${mod.name}: ${exec.message || 'Ready'}`);
+        addActivityEntry(`${mod.name} Mounted`, `Equipped to ${armName}`, 'ocean');
+      } catch (err) {
+        showToast('Mount Error', err.message);
       }
     }
 
-    async function toggleSeek() {
+    async function detachFromSlot(slot) {
+      const armName = slot === 'left_arm' ? 'Left Arm' : 'Right Arm';
+      const current = RobotModuleRegistry.getAttached()[slot];
+      if (!current) return;
+
+      await RobotModuleRegistry.detach(slot);
+      renderModalSlots();
+
+      showToast('Module Detached', `${current.name} removed from ${armName}.`);
+      logToConsole('detach', `DETACH [${armName}]`, `${current.name} detached.`);
+      addActivityEntry(`${current.name} Detached`, `Removed from ${armName}`, 'amber');
+    }
+
+    async function triggerModuleFeature(slot) {
+      const armName = slot === 'left_arm' ? 'Left Arm' : 'Right Arm';
+      const mod = RobotModuleRegistry.getAttached()[slot];
+      if (!mod) return;
+
       try {
-        showRobot(await fetch(ROBOT + '/seek', { method: 'POST' }).then(r => r.json()));
-      } catch (e) {
-        showRobot(null);
+        const result = await RobotModuleRegistry.execute(slot, 'trigger');
+        showToast(`${mod.name} Executed`, `Ran on ${armName}: ${result.message || 'Complete'}`);
+        logToConsole('execute', `EXEC [${armName}]`, `${result.title}: ${result.message}`);
+        addActivityEntry(`${mod.name} Action`, `${result.message || 'Executed on ' + armName}`, 'green');
+      } catch (err) {
+        showToast('Execution Error', err.message);
       }
     }
 
-    setInterval(robotTick, 500);
-    robotTick();
+    // Initialize arms overview
+    updateMainArmOverview();
   </script>
 </body>
 </html>
