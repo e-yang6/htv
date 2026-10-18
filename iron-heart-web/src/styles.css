@@ -31,6 +31,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .log-row:first-child { padding-top:0; }.log-row:last-child { border-bottom:0; padding-bottom:0; }
 .log-time { color:#818795; font:10px ui-monospace,SFMono-Regular,Menlo,monospace; padding-top:2px; }
 .event-dot { width:5px; height:5px; margin-top:5px; border-radius:50%; background:#414752; }
+.battery-segments { display:flex; gap:3px; align-items:flex-end; }
+.battery-seg { width:6px; height:clamp(24px,4vw,36px); border-radius:2px; background:#1e222a; }
+.battery-seg-on { background:#18bff4; }
 
 @keyframes cbPulse {
   0%,6% { stroke-dashoffset:15; opacity:0; }

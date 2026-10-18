@@ -52,3 +52,15 @@ the same way and keep still for the 4 s warm-up. Click yourself in the camera fe
   (`robot/unoq_robot/start_robot.sh`, no camera features)
 - Calibrate turns per direction: `--spin-left 3` / `--spin-right 3`, then
   `--set-turn left|right <degrees / 3>`
+
+### Mobile access (ngrok)
+
+The frontend proxies API requests through Vite, so you only need one tunnel.
+
+1. Install [ngrok](https://ngrok.com/) and sign in.
+2. With the Vite dev server running, open a new terminal:
+   ```
+   ngrok http 5173 --host-header=localhost:5173
+   ```
+3. Open the `https://xxxx.ngrok-free.app` URL on your phone.
+   You may need to click through ngrok's free-tier interstitial page on first load.
