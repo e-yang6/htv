@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { Camera, Terminal, Boxes } from "lucide-react";
 import ModulesTab from "./ModulesTab";
+import OnboardingTerminal from "./OnboardingTerminal";
 import "./styles.css";
 
 const API = "http://localhost:5001";
@@ -56,6 +57,41 @@ function Stat({ label, value, hint, accent = false }) {
 function App() {
   const [tab, setTab] = useState("camera");
 
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("onboard") || params.has("reset")) return true;
+      return sessionStorage.getItem("ironheart_session_onboarded") !== "true";
+    } catch {
+      return true;
+    }
+  });
+
+  const [hostCondition, setHostCondition] = useState(() => {
+    try {
+      return localStorage.getItem("ironheart_host_condition") || "";
+    } catch {
+      return "";
+    }
+  });
+
+  const recitedEmergencyRef = useRef(false);
+  const recitedPersonRef = useRef(false);
+
+  const speakEmergencyAloud = useCallback((text) => {
+    if (!("speechSynthesis" in window)) return;
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.95;
+      u.pitch = 1.0;
+      u.volume = 1.0;
+      window.speechSynthesis.speak(u);
+    } catch (e) {
+      console.warn("[TTS error]", e);
+    }
+  }, []);
+
   const [backendOnline, setBackendOnline] = useState(false);
   const [status, setStatus] = useState(null);
   const [gforceHistory, setGforceHistory] = useState([]);
@@ -101,9 +137,27 @@ function App() {
           setCurrentG(s.current_g);
           setActivityLevel(s.activity_level);
           setGforceHistory(g.values || []);
-          if (s.emergency) setBanner({ type: "crit", text: "Emergency — seeking nearest person (" + (s.direction || "scanning") + ")" });
-          else if (s.fall_waiting) setBanner({ type: "warn", text: "Fall detected — waiting for response" });
-          else setBanner(null);
+          if (s.emergency) {
+            const condText = hostCondition || s.host_condition || "an urgent medical condition";
+            setBanner({ type: "crit", text: `Emergency — Host Condition: ${condText} — seeking nearest person (${s.direction || "scanning"})` });
+            if (!recitedEmergencyRef.current) {
+              recitedEmergencyRef.current = true;
+              speakEmergencyAloud(`Emergency alert! The host has collapsed and requires immediate attention. The host's condition is: ${condText}. Immediate medical care required!`);
+            }
+            if (s.person_count > 0 && !recitedPersonRef.current) {
+              recitedPersonRef.current = true;
+              speakEmergencyAloud(`Emergency! Please help! My host has collapsed and has ${condText}. Please follow me to assist them!`);
+            }
+          } else {
+            recitedEmergencyRef.current = false;
+            recitedPersonRef.current = false;
+            if (s.fall_waiting) setBanner({ type: "warn", text: "Fall detected — waiting for response" });
+            else setBanner(null);
+          }
+
+          if (s.host_condition && s.host_condition !== "Not specified" && !hostCondition) {
+            setHostCondition(s.host_condition);
+          }
         }
         if (feedError && !localCamera) setFeedError(false);
       } catch {
@@ -112,7 +166,7 @@ function App() {
       }
     }, 800);
     return () => clearInterval(id);
-  }, [bleConnected, feedError, localCamera]);
+  }, [bleConnected, feedError, localCamera, hostCondition, speakEmergencyAloud]);
 
   // Robot polling
   useEffect(() => {
@@ -159,6 +213,9 @@ function App() {
           fallWaitRef.current = false;
           fallStartRef.current = null;
           setBanner(null);
+          if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+          recitedEmergencyRef.current = false;
+          recitedPersonRef.current = false;
           fetch(API + "/simulate/reset").catch(() => {});
         } else if (val === 1) {
           fallWaitRef.current = true;
@@ -170,7 +227,9 @@ function App() {
           setLocalFalls(p => [...p, { time_str: new Date().toLocaleTimeString(), impact_g: impactRef.current, outcome: "emergency", response_ms: ms }]);
           fallWaitRef.current = false;
           fallStartRef.current = null;
-          setBanner({ type: "crit", text: "EMERGENCY — No response — Robot dispatched!" });
+          const condText = hostCondition || "an urgent medical condition";
+          setBanner({ type: "crit", text: `EMERGENCY — Host Condition: ${condText} — No response — Robot dispatched!` });
+          speakEmergencyAloud(`Emergency alert! The host has collapsed and requires immediate attention. The host's condition is: ${condText}. Immediate medical care required!`);
           fetch(API + "/simulate/emergency").catch(() => {});
         }
       });
@@ -272,17 +331,27 @@ function App() {
             <span className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRONHEART</span>
             <span className="micro hidden sm:inline text-zinc-500">· EMERGENCY ROBOT DASHBOARD</span>
           </div>
-          <button
-            onClick={() => setTab("modules")}
-            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
-              tab === "modules"
-                ? "border-cyan-400 bg-cyan-950/40 text-cyan shadow-[0_0_12px_rgba(24,191,244,0.25)]"
-                : "border-line bg-zinc-900/60 text-zinc-300 hover:border-cyan hover:text-cyan"
-            }`}
-          >
-            <Boxes size={13} className={tab === "modules" ? "text-cyan" : "text-zinc-400"} />
-            <span>Modules Tab</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsOnboardingOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-line bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-all hover:border-cyan hover:text-cyan"
+              title="Click to view or update host medical condition"
+            >
+              <Terminal size={13} className="text-cyan" />
+              <span>Host: {hostCondition ? hostCondition.split(" (")[0] : "Not Set"}</span>
+            </button>
+            <button
+              onClick={() => setTab("modules")}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                tab === "modules"
+                  ? "border-cyan-400 bg-cyan-950/40 text-cyan shadow-[0_0_12px_rgba(24,191,244,0.25)]"
+                  : "border-line bg-zinc-900/60 text-zinc-300 hover:border-cyan hover:text-cyan"
+              }`}
+            >
+              <Boxes size={13} className={tab === "modules" ? "text-cyan" : "text-zinc-400"} />
+              <span>Modules Tab</span>
+            </button>
+          </div>
         </header>
 
         {banner && (
@@ -399,14 +468,41 @@ function App() {
               <button className="action-button py-2" onClick={connectBLE}>{bleConnected ? "BLE OK" : "CONNECT BLE"}</button>
               <button className="action-button py-2" onClick={toggleWebcam}>{localCamera ? "STOP CAM" : "LOCAL CAM"}</button>
               <button className="action-button py-2" onClick={() => fetch(API + "/simulate/fall").catch(() => {})}>SIM FALL</button>
-              <button className="action-button py-2" onClick={() => fetch(API + "/simulate/emergency").catch(() => {})}>SIM EMERGENCY</button>
-              <button className="action-button py-2" onClick={() => fetch(API + "/simulate/reset").catch(() => {})}>RESET</button>
+              <button
+                className="action-button py-2"
+                onClick={() => {
+                  fetch(API + "/simulate/emergency").catch(() => {});
+                  const condText = hostCondition || "an urgent medical condition";
+                  speakEmergencyAloud(`Emergency alert! The host has collapsed and requires immediate attention. The host's condition is: ${condText}. Immediate medical care required!`);
+                }}
+              >
+                SIM EMERGENCY
+              </button>
+              <button
+                className="action-button py-2"
+                onClick={() => {
+                  fetch(API + "/simulate/reset").catch(() => {});
+                  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+                  recitedEmergencyRef.current = false;
+                  recitedPersonRef.current = false;
+                  setBanner(null);
+                }}
+              >
+                RESET
+              </button>
               <button className="action-button py-2" onClick={toggleSeek} disabled={robotLabel.disabled} style={!robotOnline ? { opacity: 0.4 } : {}}>ROBOT</button>
               <button className={`action-button py-2 col-span-2 sm:col-span-1 ${tab === "modules" ? "border-cyan-400 text-cyan bg-cyan-950/30" : ""}`} onClick={() => setTab("modules")}>MODULES</button>
             </div>
           </section>
 
         </main>
+
+        <OnboardingTerminal
+          apiBase={API}
+          isOpen={isOnboardingOpen}
+          onClose={() => setIsOnboardingOpen(false)}
+          onConditionSet={(c) => setHostCondition(c)}
+        />
 
       </div>
     </div>

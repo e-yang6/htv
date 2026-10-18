@@ -908,6 +908,270 @@
     }
     .toast-title { font-size: 14px; font-weight: 700; color: var(--text-main); }
     .toast-msg { font-size: 13px; color: var(--text-secondary); margin-top: 1px; }
+
+    /* ==========================================================================
+       Onboarding Terminal & Shaded Backdrop
+       ========================================================================== */
+    .onboarding-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100vw;
+      height: 100vh;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(12, 35, 64, 0.90) 0%, rgba(6, 12, 22, 0.98) 100%);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      z-index: 99999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 1;
+      visibility: visible;
+      transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1), 
+                  backdrop-filter 0.65s ease,
+                  visibility 0.65s ease;
+    }
+
+    .onboarding-overlay.fade-out {
+      opacity: 0;
+      visibility: hidden;
+      backdrop-filter: blur(0px);
+      -webkit-backdrop-filter: blur(0px);
+      pointer-events: none;
+    }
+
+    .terminal-card {
+      width: 100%;
+      max-width: 680px;
+      background: #080e18;
+      border: 1px solid rgba(2, 132, 199, 0.4);
+      box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.8), 0 0 35px rgba(2, 132, 199, 0.2);
+      border-radius: 8px;
+      overflow: hidden;
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      color: #f1f5f9;
+      transform: translateY(0) scale(1);
+      transition: transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .onboarding-overlay.fade-out .terminal-card {
+      transform: translateY(-16px) scale(0.96);
+    }
+
+    .terminal-header {
+      background: #0c1626;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .terminal-dots {
+      display: flex;
+      gap: 7px;
+    }
+    .terminal-dots .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      display: inline-block;
+      cursor: pointer;
+    }
+    .terminal-dots .red { background: #ef4444; }
+    .terminal-dots .yellow { background: #eab308; }
+    .terminal-dots .green { background: #22c55e; }
+
+    .terminal-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #94a3b8;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .terminal-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #4ade80;
+      font-weight: 600;
+    }
+    .terminal-badge .pulse {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #4ade80;
+      box-shadow: 0 0 8px #4ade80;
+      animation: termPulse 2s infinite;
+    }
+    @keyframes termPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    .terminal-body {
+      padding: 24px;
+      font-size: 13.5px;
+      line-height: 1.6;
+    }
+
+    .term-line {
+      margin-bottom: 8px;
+      word-break: break-word;
+    }
+    .term-line.sys { color: #38bdf8; }
+    .term-line.prompt { color: #94a3b8; }
+    .term-line.question {
+      color: #fde047;
+      font-weight: 600;
+      margin: 14px 0 10px;
+      padding: 10px 12px;
+      background: rgba(234, 179, 8, 0.08);
+      border-left: 3px solid #eab308;
+      border-radius: 2px;
+    }
+    .term-line.success { color: #4ade80; font-weight: 600; }
+
+    .term-input-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 4px;
+      padding: 8px 12px;
+      margin-top: 14px;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+    }
+    .term-input-box:focus-within {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+    }
+    .term-prompt {
+      color: #38bdf8;
+      font-weight: 700;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .term-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 13.5px;
+      min-width: 0;
+    }
+    .term-input::placeholder {
+      color: #64748b;
+      font-style: italic;
+    }
+    .term-submit-btn {
+      background: #0284c7;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 14px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .term-submit-btn:hover {
+      background: #0369a1;
+    }
+
+    .term-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 14px;
+      align-items: center;
+    }
+    .term-chip-label {
+      font-size: 11.5px;
+      color: #64748b;
+      margin-right: 4px;
+    }
+    .term-chip {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      color: #cbd5e1;
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 11.5px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .term-chip:hover {
+      background: rgba(2, 132, 199, 0.25);
+      border-color: rgba(56, 189, 248, 0.5);
+      color: #38bdf8;
+    }
+
+    .terminal-status-log {
+      margin-top: 14px;
+      padding-top: 10px;
+      border-top: 1px dashed rgba(255, 255, 255, 0.1);
+      display: none;
+    }
+
+    /* Host Condition Pill in UI */
+    .host-condition-pill {
+      margin-top: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card-tint);
+      border: 1px solid var(--glass-border);
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .host-condition-pill:hover {
+      border-color: var(--ocean-primary);
+      background: #e0f2fe;
+    }
+    .host-condition-pill svg {
+      color: var(--ocean-primary);
+      flex-shrink: 0;
+    }
+    .host-edit-tag {
+      font-size: 11px;
+      color: var(--ocean-primary);
+      text-decoration: underline;
+      margin-left: 4px;
+    }
+
+    .host-profile-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #ffffff;
+      border: 1px solid var(--glass-border);
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .host-profile-btn:hover {
+      border-color: var(--ocean-primary);
+      color: var(--ocean-primary);
+    }
   </style>
 </head>
 <body>
@@ -923,6 +1187,10 @@
         <span class="dot" id="sysDot"></span>
         <span id="sysLabel">Disconnected</span>
       </div>
+      <button class="btn host-profile-btn" id="hostProfileBtn" onclick="openOnboardingTerminal()" title="View or reconfigure host condition for emergency recitation">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span id="navHostConditionLabel">Host: Not Set</span>
+      </button>
       <button class="btn btn-primary" id="bleBtn" onclick="connectBLE()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>
         Connect BLE
@@ -979,10 +1247,16 @@
               </div>
             </div>
 
+            <div class="host-condition-pill" id="hostConditionPill" onclick="openOnboardingTerminal()" title="Click to view or update host medical condition">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span>Host Condition: <strong id="patientHostConditionText">Not Configured</strong></span>
+              <span class="host-edit-tag">Edit</span>
+            </div>
+
             <div class="simulation-controls">
               <button class="btn" onclick="f('/simulate/fall')">Simulate Fall</button>
               <button class="btn btn-danger" onclick="simulateEmergencyWithModules()">Simulate Emergency</button>
-              <button class="btn" onclick="f('/simulate/reset')">Reset Alarm</button>
+              <button class="btn" onclick="f('/simulate/reset'); OnboardingManager.resetEmergencyRecitation()">Reset Alarm</button>
             </div>
           </div>
         </div>
@@ -1198,14 +1472,321 @@
     </div>
   </div>
 
+  <!-- Onboarding Terminal Overlay -->
+  <div id="onboardingOverlay" class="onboarding-overlay">
+    <div class="terminal-card" role="dialog" aria-modal="true" aria-labelledby="termTitle">
+      <div class="terminal-header">
+        <div class="terminal-dots">
+          <span class="dot red" onclick="closeOnboardingTerminal(true)" title="Skip / Dismiss"></span>
+          <span class="dot yellow"></span>
+          <span class="dot green"></span>
+        </div>
+        <div class="terminal-title" id="termTitle">HOST ONBOARDING // MECCANOID RESCUE OS v2.4</div>
+        <div class="terminal-badge">
+          <span class="pulse"></span>
+          <span>SYS: ONLINE</span>
+        </div>
+      </div>
+      <div class="terminal-body" id="termBody">
+        <div class="term-line sys">[SYSTEM] IronHeart Medical Companion OS v2.4 initialized.</div>
+        <div class="term-line sys">[SYSTEM] Establishing telemetry link with Meccanoid Core... CONNECTED.</div>
+        <div class="term-line prompt">[SETUP] Configuring autonomous bystander emergency dispatch protocol...</div>
+        <div class="term-line question">
+          &gt; What primary medical condition or instructions should the robot recite to bystanders when finding assistance?
+        </div>
+        <div id="termPrevNotice" class="term-line prompt" style="display:none; color: #38bdf8; font-style: italic;"></div>
+
+        <form id="onboardingForm" class="term-input-box" onsubmit="handleOnboardingSubmit(event)">
+          <span class="term-prompt">host@rescue:~$</span>
+          <input 
+            type="text" 
+            id="conditionInput" 
+            class="term-input" 
+            placeholder="Type condition (e.g., Severe Peanut Allergy / EpiPen equipped)..." 
+            autocomplete="off"
+            required
+          />
+          <button type="submit" class="term-submit-btn" id="termSubmitBtn">Register &gt;</button>
+        </form>
+
+        <div class="term-chips">
+          <span class="term-chip-label">Quick select:</span>
+          <button type="button" class="term-chip" onclick="fillOnboardingInput('Severe Peanut Allergy (EpiPen equipped)')">Peanut Allergy / EpiPen</button>
+          <button type="button" class="term-chip" onclick="fillOnboardingInput('Type 1 Diabetes (Hypoglycemia prone)')">Type 1 Diabetes</button>
+          <button type="button" class="term-chip" onclick="fillOnboardingInput('Severe Asthma (Inhaler in backpack)')">Severe Asthma</button>
+          <button type="button" class="term-chip" onclick="fillOnboardingInput('Cardiac History / Pacemaker Alert')">Cardiac Alert</button>
+        </div>
+
+        <div id="terminalStatusLog" class="terminal-status-log"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- JavaScript Application Logic -->
   <script>
-    const API = 'http://localhost:5001';
-    if (window.RobotModuleRegistry) RobotModuleRegistry.setApiBase(API);
-    const f = path => fetch(API + path).catch(() => {});
+    const API = (window.location.port === '5001') ? '' : 'http://localhost:5001';
+    if (window.RobotModuleRegistry) RobotModuleRegistry.setApiBase(API || 'http://localhost:5001');
+    const f = path => fetch((API || '') + path).catch(() => {});
+
+    // =========================================================================
+    // Onboarding & Emergency Condition Manager
+    // =========================================================================
+    const OnboardingManager = {
+      STORAGE_KEY: 'ironheart_host_condition',
+      currentCondition: '',
+      hasRecitedInEmergency: false,
+      hasRecitedToFoundPerson: false,
+
+      async init() {
+        const overlay = document.getElementById('onboardingOverlay');
+        const input = document.getElementById('conditionInput');
+        const prevNotice = document.getElementById('termPrevNotice');
+
+        // Check for URL parameters ?onboard or ?reset
+        const urlParams = new URLSearchParams(window.location.search);
+        const forceOnboard = urlParams.has('onboard') || urlParams.has('reset');
+        if (urlParams.has('reset')) {
+          try {
+            localStorage.removeItem(this.STORAGE_KEY);
+            sessionStorage.removeItem('ironheart_session_onboarded');
+          } catch (e) {}
+        }
+
+        // 1. Check local storage
+        let saved = '';
+        try {
+          saved = (localStorage.getItem(this.STORAGE_KEY) || '').trim();
+        } catch (e) {}
+
+        // Clean out any stale test dummy values from previous backend tests
+        if (saved === 'Severe Peanut Allergy (EpiPen equipped)' && !sessionStorage.getItem('ironheart_session_onboarded')) {
+          saved = '';
+          try { localStorage.removeItem(this.STORAGE_KEY); } catch (e) {}
+        }
+
+        // 2. Fetch condition from backend if available
+        try {
+          const res = await fetch(API + '/api/host/profile').then(r => r.json());
+          if (res && res.condition && res.condition !== 'Not specified' && res.condition.trim()) {
+            saved = res.condition.trim();
+            try { localStorage.setItem(this.STORAGE_KEY, saved); } catch (e) {}
+          }
+        } catch (e) {
+          // Backend offline - rely on localStorage
+        }
+
+        if (saved && saved !== 'Not specified') {
+          this.currentCondition = saved;
+          this.updateUI(saved);
+        }
+
+        // Check session onboarding status
+        let sessionOnboarded = false;
+        try {
+          sessionOnboarded = sessionStorage.getItem('ironheart_session_onboarded') === 'true';
+        } catch (e) {}
+
+        // If already completed in this active browser session AND not forced:
+        if (sessionOnboarded && !forceOnboard && saved) {
+          if (overlay) overlay.style.display = 'none';
+        } else {
+          // Show onboarding terminal on startup
+          if (overlay) {
+            overlay.classList.remove('fade-out');
+            overlay.style.display = 'flex';
+          }
+          if (input) {
+            if (saved && saved !== 'Not specified') {
+              input.value = saved;
+              if (prevNotice) {
+                prevNotice.style.display = 'block';
+                prevNotice.textContent = `[SAVED PROFILE] Detected existing profile: "${saved}". Press Enter to confirm or update:`;
+              }
+            } else {
+              input.value = '';
+              if (prevNotice) prevNotice.style.display = 'none';
+            }
+            setTimeout(() => input.focus(), 300);
+          }
+        }
+      },
+
+      getCondition() {
+        return this.currentCondition || localStorage.getItem(this.STORAGE_KEY) || 'Medical Alert';
+      },
+
+      async save(conditionText) {
+        const condition = (conditionText || '').trim();
+        if (!condition) return;
+
+        this.currentCondition = condition;
+        try {
+          localStorage.setItem(this.STORAGE_KEY, condition);
+        } catch (e) {}
+        this.updateUI(condition);
+
+        // Persist to backend robot server
+        try {
+          await fetch(API + '/api/host/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ condition })
+          });
+        } catch (e) {
+          console.warn('[Onboarding] Backend unavailable, saved locally.');
+        }
+
+        showToast('Host Profile Active', `Condition registered: ${condition}`);
+        addActivityEntry('Host Onboarded', `Emergency condition set: ${condition}`, 'ocean');
+      },
+
+      updateUI(condition) {
+        const navLabel = document.getElementById('navHostConditionLabel');
+        if (navLabel) {
+          navLabel.textContent = condition ? `Host: ${condition}` : 'Host: Not Set';
+          navLabel.title = condition ? `Host Condition: ${condition}` : 'Configure Host Medical Condition';
+        }
+
+        const patientLabel = document.getElementById('patientHostConditionText');
+        if (patientLabel) {
+          patientLabel.textContent = condition || 'Not Configured';
+        }
+      },
+
+      openTerminal() {
+        const overlay = document.getElementById('onboardingOverlay');
+        const input = document.getElementById('conditionInput');
+        const statusLog = document.getElementById('terminalStatusLog');
+
+        if (statusLog) statusLog.style.display = 'none';
+        if (input) {
+          input.value = this.currentCondition || '';
+          input.disabled = false;
+        }
+
+        if (overlay) {
+          overlay.classList.remove('fade-out');
+          overlay.style.display = 'flex';
+          setTimeout(() => input && input.focus(), 250);
+        }
+      },
+
+      closeTerminal(skipFade = false) {
+        try {
+          sessionStorage.setItem('ironheart_session_onboarded', 'true');
+        } catch (e) {}
+        const overlay = document.getElementById('onboardingOverlay');
+        if (!overlay) return;
+
+        if (skipFade) {
+          overlay.style.display = 'none';
+        } else {
+          overlay.classList.add('fade-out');
+          setTimeout(() => { overlay.style.display = 'none'; }, 650);
+        }
+      },
+
+      reciteEmergency() {
+        if (this.hasRecitedInEmergency) return;
+        this.hasRecitedInEmergency = true;
+
+        const cond = this.getCondition();
+        const speechText = `Emergency alert! The host has collapsed and requires immediate attention. The host's condition is: ${cond}. Immediate medical care required!`;
+        this.speak(speechText);
+      },
+
+      reciteToFoundPerson() {
+        if (this.hasRecitedToFoundPerson) return;
+        this.hasRecitedToFoundPerson = true;
+
+        const cond = this.getCondition();
+        const speechText = `Emergency! Please help! My host has collapsed and has ${cond}. Please follow me to assist them!`;
+        this.speak(speechText);
+      },
+
+      resetEmergencyRecitation() {
+        this.hasRecitedInEmergency = false;
+        this.hasRecitedToFoundPerson = false;
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      },
+
+      speak(text) {
+        if (!('speechSynthesis' in window)) return;
+        try {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.rate = 0.95;
+          utterance.pitch = 1.0;
+          utterance.volume = 1.0;
+          window.speechSynthesis.speak(utterance);
+        } catch (e) {
+          console.warn('[SpeechSynthesis Error]', e);
+        }
+      }
+    };
+
+    function openOnboardingTerminal() {
+      OnboardingManager.openTerminal();
+    }
+
+    function closeOnboardingTerminal(skipFade = false) {
+      OnboardingManager.closeTerminal(skipFade);
+    }
+
+    function fillOnboardingInput(text) {
+      const input = document.getElementById('conditionInput');
+      if (input) {
+        input.value = text;
+        input.focus();
+      }
+    }
+
+    async function handleOnboardingSubmit(event) {
+      if (event) event.preventDefault();
+      const input = document.getElementById('conditionInput');
+      const submitBtn = document.getElementById('termSubmitBtn');
+      const log = document.getElementById('terminalStatusLog');
+      const val = (input ? input.value : '').trim();
+
+      if (!val) return;
+
+      if (input) input.disabled = true;
+      if (submitBtn) submitBtn.disabled = true;
+
+      try {
+        sessionStorage.setItem('ironheart_session_onboarded', 'true');
+      } catch (e) {}
+
+      if (log) {
+        log.style.display = 'block';
+        log.innerHTML = `
+          <div class="term-line success">[SAVING] Storing host profile: "${val}"...</div>
+          <div class="term-line sys">[ARMED] Emergency bystander broadcast payload ready.</div>
+          <div class="term-line success">[LAUNCH] Unveiling telemetry monitoring dashboard...</div>
+        `;
+      }
+
+      await OnboardingManager.save(val);
+
+      setTimeout(() => {
+        OnboardingManager.closeTerminal();
+        if (input) input.disabled = false;
+        if (submitBtn) submitBtn.disabled = false;
+      }, 700);
+    }
+
+    // Keyboard shortcut (ESC) to dismiss modal if open
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const overlay = document.getElementById('onboardingOverlay');
+        if (overlay && overlay.style.display !== 'none' && !overlay.classList.contains('fade-out')) {
+          closeOnboardingTerminal(false);
+        }
+      }
+    });
 
     // Session Timer
     const sessionStart = Date.now();
@@ -1529,12 +2110,14 @@
         localFallStartTime = null;
         renderFallTable(localFalls);
         updateAvgResponse();
+        const cond = OnboardingManager.getCondition();
         banner.className = 'alert-banner crit';
         banner.style.display = 'block';
-        banner.textContent = 'Emergency: No response from patient. Robot dispatched to location.';
+        banner.textContent = 'Emergency: No response from patient. Robot dispatched • Host Condition: ' + cond;
         document.getElementById('targetText').textContent = 'Navigating to Patient';
         updatePatientState(true, false);
-        addActivityEntry('Emergency Dispatched', 'No response within timeout. Robot dispatched to assist patient.', 'red');
+        addActivityEntry('Emergency Dispatched', `No response within timeout. Host Condition: ${cond}. Robot dispatched to assist patient.`, 'red');
+        OnboardingManager.reciteEmergency();
         f('/simulate/emergency');
 
         const attached = RobotModuleRegistry.getAttached();
@@ -1583,7 +2166,9 @@
     function simulateEmergencyWithModules() {
       f('/simulate/emergency');
       updatePatientState(true, false);
-      addActivityEntry('Simulated Emergency', 'Emergency alert triggered. Deploying equipped arm modules.', 'red');
+      const cond = OnboardingManager.getCondition();
+      addActivityEntry('Simulated Emergency', `Emergency alert triggered. Host Condition: ${cond}. Deploying equipped arm modules.`, 'red');
+      OnboardingManager.reciteEmergency();
 
       const attached = RobotModuleRegistry.getAttached();
       ['right_arm', 'left_arm'].forEach(slot => {
@@ -1633,19 +2218,31 @@
           if (s.emergency) {
             document.getElementById('targetText').textContent = s.direction ? `Direction: ${s.direction}` : 'Scanning for Person';
             updatePatientState(true, false);
+            OnboardingManager.reciteEmergency();
+            if (s.person_count > 0) {
+              OnboardingManager.reciteToFoundPerson();
+            }
           } else if (s.fall_waiting) {
             document.getElementById('targetText').textContent = 'Patient Fall Detected';
             updatePatientState(false, true);
+            OnboardingManager.resetEmergencyRecitation();
           } else {
             document.getElementById('targetText').textContent = s.person_count > 0 ? 'Tracking Person in View' : 'Searching for Person';
             updatePatientState(false, false);
+            OnboardingManager.resetEmergencyRecitation();
+          }
+
+          if (s.host_condition && s.host_condition !== 'Not specified' && !OnboardingManager.currentCondition) {
+            OnboardingManager.currentCondition = s.host_condition;
+            OnboardingManager.updateUI(s.host_condition);
           }
 
           const banner = document.getElementById('banner');
+          const condText = OnboardingManager.getCondition();
           if (s.emergency) {
             banner.className = 'alert-banner crit';
             banner.style.display = 'block';
-            banner.textContent = 'Emergency: Navigating to patient (' + (s.direction || 'Searching') + ')';
+            banner.textContent = 'Emergency: Navigating to patient (' + (s.direction || 'Searching') + ') • Host Condition: ' + condText;
           } else if (s.fall_waiting) {
             banner.className = 'alert-banner warn';
             banner.style.display = 'block';
@@ -1895,6 +2492,9 @@
 
     // Initialize arms overview
     updateMainArmOverview();
+
+    // Initialize Onboarding & Host Condition
+    OnboardingManager.init();
   </script>
 </body>
 </html>

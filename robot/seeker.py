@@ -20,6 +20,36 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TURN_RATE_FILE = os.path.join(HERE, "turn_rate.json")
+HOST_PROFILE_FILE = os.path.join(HERE, "host_profile.json")
+
+def get_host_condition():
+    """Retrieve host condition saved during onboarding."""
+    if os.path.exists(HOST_PROFILE_FILE):
+        try:
+            with open(HOST_PROFILE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("condition", "an urgent medical condition")
+        except Exception:
+            pass
+    return "an urgent medical condition"
+
+def speak_emergency(text):
+    """Cross-platform TTS voice recitation."""
+    def _run():
+        import platform, subprocess
+        sys_plat = platform.system()
+        try:
+            if sys_plat == "Darwin":
+                subprocess.run(["say", text], check=False)
+            elif sys_plat == "Linux":
+                subprocess.run(["espeak", text], check=False)
+            elif sys_plat == "Windows":
+                escaped = text.replace("'", "''")
+                ps = f"Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{escaped}')"
+                subprocess.run(["powershell", "-NoProfile", "-Command", ps], check=False)
+        except Exception as e:
+            print(f"[Seeker TTS Error] {e}")
+    threading.Thread(target=_run, daemon=True).start()
 
 # --- Camera ---
 CAMERA_FOV_DEG = 60.0     # horizontal field of view of the chest camera (rough is fine)
@@ -230,6 +260,7 @@ class Seeker:
     def start(self, heading, emergency=False):
         self.emergency = emergency
         self.confirmed = False
+        self.recited_condition = False
         self.vision.exclude_lying = emergency
         self.x = self.y = 0.0
         self.origin_heading = heading
@@ -337,8 +368,15 @@ class Seeker:
         return self._turn(SCAN_PULSE_S * self.turn_rate, now)
 
     def _wave(self, now):
-        """Flag the person down, then lead them back to the fallen wearer."""
+        """Flag the person down, recite the host's condition, then lead them back to the fallen wearer."""
         t = now - self.arrived_at
+        if self.emergency and not getattr(self, "recited_condition", False):
+            self.recited_condition = True
+            cond = get_host_condition()
+            msg = f"Emergency! Please help! My host has collapsed and has {cond}. Please follow me to assist them!"
+            print(f"[Seeker TTS] {msg}")
+            speak_emergency(msg)
+
         if t >= WAVE_S:
             self.arm_cmd = b"p"
             self.go_home()
