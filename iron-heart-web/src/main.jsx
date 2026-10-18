@@ -101,15 +101,8 @@ function Stat({ label, value, hint, accent = false }) {
 function App() {
   const [tab, setTab] = useState("camera");
 
-  const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      if (params.has("onboard") || params.has("reset")) return true;
-      return sessionStorage.getItem("ironheart_session_onboarded") !== "true";
-    } catch {
-      return true;
-    }
-  });
+  // Always require onboarding on app startup
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(true);
 
   const [hostCondition, setHostCondition] = useState(() => {
     try {
