@@ -9,7 +9,7 @@ port 5001, now served by follow_bridge.py itself so one program owns the BLE33 a
   GET  /simulate/emergency  pretend no double-tap came: emergency  (robot goes for help)
   GET  /simulate/reset      pretend the double-tap cancel
   GET  /modules/available|attached|history,  POST /modules/attach|detach|execute   (robot/modules)
-  GET  /api/host/profile    host's medical condition (onboarding terminal);
+  GET  /host/profile       host's medical condition (also /api/host/profile) (onboarding terminal);
                             POST {"condition", "description"?, "steps"?: [...]} sets it
 
 The robot's own controls stay on port 5002 (see follow_bridge.start_http).
@@ -114,6 +114,10 @@ def status(dash, follower, seeker):
     }
 
 
+# The onboarding terminal calls /host/profile (through the Vite proxy) or /api/host/profile (direct)
+HOST_PROFILE_PATHS = ("/host/profile", "/api/host/profile")
+
+
 def handle(handler, dash, follower, seeker, method):
     """Serve one dashboard request on `handler` (a BaseHTTPRequestHandler). Returns False if the path
     isn't a dashboard path."""
@@ -143,7 +147,7 @@ def handle(handler, dash, follower, seeker, method):
             if dash.backup:
                 dash.backup.cancel()
             return handler._json({"status": "normal"}) or True
-        if path == "/api/host/profile":
+        if path in HOST_PROFILE_PATHS:
             p = get_host_profile()
             return handler._json({"success": True, **p, "condition": p["condition"] or "Not specified"}) or True
         if path == "/modules/available":
@@ -152,14 +156,14 @@ def handle(handler, dash, follower, seeker, method):
             return handler._json(registry.get_attached()) or True
         if path == "/modules/history":
             return handler._json(registry.get_history()) or True
-    if method == "POST" and (path.startswith("/modules/") or path == "/api/host/profile"):
+    if method == "POST" and (path.startswith("/modules/") or path in HOST_PROFILE_PATHS):
         import json
         body = handler.rfile.read(int(handler.headers.get("Content-Length", 0)) or 0)
         try:
             data = json.loads(body or b"{}")
         except ValueError:
             data = {}
-        if path == "/api/host/profile":
+        if path in HOST_PROFILE_PATHS:
             cond = (data.get("condition") or "").strip()
             if not cond:
                 return handler._json({"success": False, "error": "Condition cannot be empty"}, 400) or True

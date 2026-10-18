@@ -99,15 +99,8 @@ function Stat({ label, value, hint, accent = false }) {
 function App() {
   const [tab, setTab] = useState("camera");
 
-  const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      if (params.has("onboard") || params.has("reset")) return true;
-      return sessionStorage.getItem("ironheart_session_onboarded") !== "true";
-    } catch {
-      return true;
-    }
-  });
+  // Always require onboarding on app startup
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(true);
 
   const [hostCondition, setHostCondition] = useState(() => {
     try {
@@ -460,14 +453,13 @@ function App() {
 
       <div className="mx-auto min-h-screen max-w-6xl px-3 py-3 sm:px-6 sm:py-6">
 
-        <header className="mb-4 flex items-center justify-between px-1 sm:mb-6">
-          <h1 className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRONHEART</h1>
+        <header className="mb-4 px-1 sm:mb-6 flex items-center justify-between">
+          <span className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRONHEART</span>
           <button
             onClick={() => setIsOnboardingOpen(true)}
-            className="border border-line px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-cyan hover:text-cyan"
-            title="Click to view or update host medical condition"
+            className="micro text-zinc-500 hover:text-cyan transition-colors"
           >
-            Host: {hostCondition ? hostCondition.split(" (")[0] : "Not Set"}
+            {hostCondition ? hostCondition.split(" (")[0] : "Set Condition"}
           </button>
         </header>
 

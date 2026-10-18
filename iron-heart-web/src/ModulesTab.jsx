@@ -5,6 +5,41 @@ export default function ModulesTab({ backendOnline, apiBase, robotState, onNotif
   const [attached, setAttached] = useState(INITIAL_ATTACHED);
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverSlot, setDragOverSlot] = useState(null);
+  const [customModules, setCustomModules] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("ironheart_custom_modules") || "[]");
+    } catch { return []; }
+  });
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+
+  const allModules = [...MODULE_DEFINITIONS, ...customModules];
+
+  const saveCustom = (mods) => {
+    setCustomModules(mods);
+    try { localStorage.setItem("ironheart_custom_modules", JSON.stringify(mods)); } catch {}
+  };
+
+  const addCustomModule = () => {
+    const name = newName.trim();
+    if (!name) return;
+    const id = "custom_" + Date.now();
+    saveCustom([...customModules, { id, name, description: newDesc.trim() || "Custom module", supportedSlots: ["left_arm", "right_arm"], actions: [] }]);
+    setNewName("");
+    setNewDesc("");
+    setShowAdd(false);
+  };
+
+  const removeCustomModule = (id) => {
+    setAttached(prev => {
+      const next = { ...prev };
+      if (next.left_arm === id) next.left_arm = null;
+      if (next.right_arm === id) next.right_arm = null;
+      return next;
+    });
+    saveCustom(customModules.filter(m => m.id !== id));
+  };
 
   useEffect(() => {
     if (!backendOnline) return;
@@ -75,6 +110,7 @@ export default function ModulesTab({ backendOnline, apiBase, robotState, onNotif
         <ArmSlot
           label="Left Arm" slot="left_arm"
           moduleId={attached.left_arm}
+          allModules={allModules}
           dragOver={dragOverSlot === "left_arm"}
           onDragOver={e => onDragOver(e, "left_arm")}
           onDragLeave={e => onDragLeave(e, "left_arm")}
@@ -84,6 +120,7 @@ export default function ModulesTab({ backendOnline, apiBase, robotState, onNotif
         <ArmSlot
           label="Right Arm" slot="right_arm"
           moduleId={attached.right_arm}
+          allModules={allModules}
           dragOver={dragOverSlot === "right_arm"}
           onDragOver={e => onDragOver(e, "right_arm")}
           onDragLeave={e => onDragLeave(e, "right_arm")}
@@ -92,10 +129,41 @@ export default function ModulesTab({ backendOnline, apiBase, robotState, onNotif
         />
       </div>
 
-      <h2 className="micro">AVAILABLE MODULES</h2>
+      <header className="flex items-center justify-between">
+        <h2 className="micro">AVAILABLE MODULES</h2>
+        <button onClick={() => setShowAdd(!showAdd)} className="micro text-cyan hover:text-white">
+          {showAdd ? "CANCEL" : "+ ADD"}
+        </button>
+      </header>
+
+      {showAdd && (
+        <form className="border border-[#242832] bg-[#0f1117] p-3" onSubmit={e => { e.preventDefault(); addCustomModule(); }}>
+          <input
+            type="text"
+            placeholder="Module name"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            className="mb-2 w-full border-b border-zinc-700 bg-transparent pb-2 text-xs text-zinc-200 outline-none"
+            autoFocus
+          />
+          <input
+            type="text"
+            placeholder="Description (optional)"
+            value={newDesc}
+            onChange={e => setNewDesc(e.target.value)}
+            className="mb-3 w-full border-b border-zinc-700 bg-transparent pb-2 text-xs text-zinc-400 outline-none"
+          />
+          <button type="submit" disabled={!newName.trim()} className="action-button w-full py-1.5 text-[10px]"
+                  style={!newName.trim() ? { opacity: 0.4 } : {}}>
+            ADD MODULE
+          </button>
+        </form>
+      )}
+
       <ul className="grid grid-cols-1 gap-2">
-        {MODULE_DEFINITIONS.map(mod => {
+        {allModules.map(mod => {
           const slotLabel = attached.left_arm === mod.id ? "Left" : attached.right_arm === mod.id ? "Right" : null;
+          const isCustom = mod.id.startsWith("custom_");
           return (
             <li
               key={mod.id}
@@ -116,6 +184,9 @@ export default function ModulesTab({ backendOnline, apiBase, robotState, onNotif
                   <button onClick={() => attachModule("right_arm", mod.id)} className="action-button px-3 py-1.5 text-[9px] sm:hidden">RIGHT ARM</button>
                 </>
               )}
+              {isCustom && (
+                <button onClick={() => removeCustomModule(mod.id)} className="micro text-zinc-600 hover:text-red-400" title="Remove this module">✕</button>
+              )}
             </li>
           );
         })}
@@ -124,8 +195,8 @@ export default function ModulesTab({ backendOnline, apiBase, robotState, onNotif
   );
 }
 
-function ArmSlot({ label, slot, moduleId, dragOver, onDragOver, onDragLeave, onDrop, onDetach }) {
-  const mod = moduleId ? MODULE_DEFINITIONS.find(m => m.id === moduleId) : null;
+function ArmSlot({ label, slot, moduleId, allModules, dragOver, onDragOver, onDragLeave, onDrop, onDetach }) {
+  const mod = moduleId ? allModules.find(m => m.id === moduleId) : null;
 
   return (
     <div

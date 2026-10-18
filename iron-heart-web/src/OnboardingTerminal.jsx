@@ -40,7 +40,8 @@ export default function OnboardingTerminal({ apiBase = "http://localhost:5001", 
     }
 
     // Check server profile
-    fetch(apiBase + "/api/host/profile")
+    const profileUrl = apiBase.endsWith("/api") ? `${apiBase}/host/profile` : `${apiBase}/api/host/profile`;
+    fetch(profileUrl)
       .then((r) => r.json())
       .then((data) => {
         if (data && data.condition && data.condition !== "Not specified" && data.condition.trim()) {
@@ -91,7 +92,8 @@ export default function OnboardingTerminal({ apiBase = "http://localhost:5001", 
 
     // Sync with backend robot server
     try {
-      await fetch(apiBase + "/api/host/profile", {
+      const profileUrl = apiBase.endsWith("/api") ? `${apiBase}/host/profile` : `${apiBase}/api/host/profile`;
+      await fetch(profileUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ condition: trimmed, ...profile }),
