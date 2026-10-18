@@ -14,6 +14,16 @@ GFORCE_CHAR_UUID = "19b10002-e8f2-537e-4f6c-d104768a1214"   # G-force x100, for 
 # When the robot goes to fetch help: 2 = emergency (no double-tap within 5 s; what the dashboard shows
 # as "robot dispatched"), 1 = as soon as a fall is detected
 RESCUE_ON = 2
+
+# --- Backup fall detector (on this computer, from the BLE33's G-force stream) ---
+# The BLE33 decides falls itself, but its thresholds are strict and changing them needs a reflash.
+# This catches falls it misses: a G-force spike, then you staying down (no steps, little movement).
+# The dashboard's RESET cancels it, like the double-tap.
+BACKUP_FALL = True
+BACKUP_IMPACT_G = 1.6     # G-force spike this big = possible fall (G-force arrives 5x a second)
+BACKUP_STILL_S = 2.0      # ...then this long without steps and with little motion = fall
+BACKUP_STILL_MG = 60      # "little motion" (BLE33 motion level)
+BACKUP_CONFIRM_S = 5.0    # fall not cancelled within this long = emergency (same as the BLE33)
 YAW_SIGN = 1              # flip to -1 if the robot turns the opposite way to you
 DATA_TIMEOUT_S = 1.0      # no BLE33 data for this long = stop
 

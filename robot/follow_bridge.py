@@ -68,7 +68,7 @@ def status_line(follower, worst_dt, fusion, seeker):
             f"{follower.source}")
 
 
-async def control_task(follower, robot, seeker=None, phone=None):
+async def control_task(follower, robot, seeker=None, phone=None, dash=None):
     from phone_imu import HeadingFusion
     # Started now (not at the first phone packet) so every turn the robot makes is on record
     fusion = HeadingFusion(phone, follower.robot_heading) if phone else None
@@ -92,6 +92,8 @@ async def control_task(follower, robot, seeker=None, phone=None):
             follower.track(cmd, dt, dheading=wrap(target - follower.robot_heading))
         else:
             follower.track(cmd, dt)
+        if dash and dash.backup:
+            dash.backup.tick()
         if seeker:
             seeker.update_pose(cmd, follower.robot_heading, dt)
             fall_seen = handle_fall(follower, seeker, fall_seen)
@@ -102,6 +104,10 @@ async def control_task(follower, robot, seeker=None, phone=None):
             if cmd is None:
                 print("Back at the start, follow mode")
                 follower.reset_distance()
+                if follower.fall:
+                    follower.report_fall(0)   # rescue done: clear the alarm so the next fall counts
+                if dash:
+                    dash.reset()
                 cmd = (0, 0)
         else:
             sticker = seeker.vision.sticker(cfg.PATCH_FRESH_S) if seeker else None
@@ -374,11 +380,17 @@ async def main():
         if cfg.USE_PHONE_HEADING:
             from phone_imu import PhoneIMU
             phone = PhoneIMU()
-        from dashboard import DashboardData
-        dash = DashboardData()
-        follower.on_fall_change = dash.on_fall_status
+        try:
+            from dashboard import BackupFallDetector, DashboardData
+            dash = DashboardData()
+            follower.on_fall_change = dash.on_fall_status
+            if cfg.BACKUP_FALL:
+                dash.backup = BackupFallDetector(follower, cfg)
+        except ImportError as e:   # e.g. on the UNO Q, which doesn't have robot/modules
+            print(f"Dashboard API off ({e})")
+            dash = None
         start_http(follower, seeker, phone, args.http_port, dash, args.dashboard_port)
-        await asyncio.gather(ble_task(follower, dash), control_task(follower, robot, seeker, phone))
+        await asyncio.gather(ble_task(follower, dash), control_task(follower, robot, seeker, phone, dash))
     finally:
         if robot:
             robot.close()

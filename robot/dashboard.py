@@ -27,6 +27,12 @@ class DashboardData:
 
     def __init__(self):
         self.gforce = deque(maxlen=300)    # (time, g), 5 per second from the BLE33 = 60 s
+        # The BLE33 drops its fall/emergency flag after ~3 s; the dashboard keeps them up until RESET
+        # (or the rescue ends), like robot/server.py did
+        self.fall_latched = False
+        self.emergency_latched = False
+        # Backup fall detector state (see BackupFallDetector)
+        self.backup = None
         self.falls = []                    # {time, time_str, impact_g, outcome, response_ms}
         self.fall_started = None           # when the current fall was first reported
         self.activity = "low"
@@ -35,6 +41,8 @@ class DashboardData:
         """BLE33 G-force notification: uint16, g x 100."""
         g = int.from_bytes(bytes(data)[:2], "little") / 100.0
         self.gforce.append((time.time(), g))
+        if self.backup:
+            self.backup.on_g(g)
         recent = [v for _, v in list(self.gforce)[-50:]]
         if len(recent) >= 10:
             mean = sum(recent) / len(recent)
@@ -55,11 +63,18 @@ class DashboardData:
         now = time.time()
         if new == 1 and old != 1:
             self.fall_started = now
+            self.fall_latched = True
         elif new == 2 and old != 2:
+            self.fall_latched, self.emergency_latched = False, True
             self._log("emergency", now)
             self._trigger_modules("emergency")
         elif new == 0 and old == 1:
+            self.fall_latched = False
             self._log("cancelled", now)
+
+    def reset(self):
+        """Dashboard RESET: clear the latched alerts."""
+        self.fall_latched = self.emergency_latched = False
 
     def _log(self, outcome, now):
         response = int((now - self.fall_started) * 1000) if self.fall_started else 5000
@@ -76,8 +91,8 @@ class DashboardData:
 def status(dash, follower, seeker):
     history = registry.get_history()
     return {
-        "emergency": follower.fall == 2,
-        "fall_waiting": follower.fall == 1,
+        "emergency": dash.emergency_latched or follower.fall == 2,
+        "fall_waiting": (dash.fall_latched or follower.fall == 1) and not dash.emergency_latched,
         "ble_connected": time.monotonic() - follower.last_data < 2 if follower.last_data else False,
         "direction": seeker.state if seeker and seeker.active else follower.state,
         "person_count": seeker.vision.people if seeker else 0,
@@ -117,6 +132,9 @@ def handle(handler, dash, follower, seeker, method):
             return handler._json({"status": "emergency"}) or True
         if path == "/simulate/reset":
             follower.report_fall(0)
+            dash.reset()
+            if dash.backup:
+                dash.backup.cancel()
             return handler._json({"status": "normal"}) or True
         if path == "/modules/available":
             return handler._json(registry.get_available()) or True
@@ -142,3 +160,42 @@ def handle(handler, dash, follower, seeker, method):
             return handler._json(registry.execute(slot, action=data.get("action", "trigger"),
                                                   params=data.get("params"), robot_state=robot_state)) or True
     return False
+
+
+class BackupFallDetector:
+    """Backup fall detection from the G-force stream (see BACKUP_* in follow_config.py).
+    Reports through follower.report_fall exactly like the BLE33, so the dashboard and the rescue
+    react the same way. Call tick() regularly; it's fed by DashboardData.on_gforce."""
+
+    def __init__(self, follower, cfg):
+        self.follower, self.cfg = follower, cfg
+        self.spike_at = None       # time of a big G spike being checked
+        self.fall_at = None        # time we reported a fall (waiting for a cancel)
+
+    def on_g(self, g):
+        if self.follower.fall == 0 and self.fall_at is None and self.spike_at is None and g >= self.cfg.BACKUP_IMPACT_G:
+            self.spike_at = time.monotonic()
+            print(f"Backup fall check: {g:.2f} g spike, waiting to see if you stay down...")
+
+    def cancel(self):
+        self.spike_at = self.fall_at = None
+
+    def tick(self):
+        f, now = self.follower, time.monotonic()
+        if self.spike_at is not None:
+            moved = f.last_step_t > self.spike_at or f.motion > self.cfg.BACKUP_STILL_MG
+            if moved and now - self.spike_at > 0.5:      # got up / kept walking: not a fall
+                self.spike_at = None
+            elif now - self.spike_at >= self.cfg.BACKUP_STILL_S:
+                self.spike_at = None
+                if f.fall == 0:
+                    print("Backup fall detector: FALL (big impact, then staying down)")
+                    self.fall_at = now
+                    f.report_fall(1)
+        if self.fall_at is not None:
+            if f.fall != 1:                               # cancelled (RESET) or the BLE33 took over
+                self.fall_at = None
+            elif now - self.fall_at >= self.cfg.BACKUP_CONFIRM_S:
+                print("Backup fall detector: no cancel, EMERGENCY")
+                self.fall_at = None
+                f.report_fall(2)
