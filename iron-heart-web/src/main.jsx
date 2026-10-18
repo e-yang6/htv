@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
-import { Camera, Terminal } from "lucide-react";
+import { Camera, Terminal, Boxes } from "lucide-react";
+import ModulesTab from "./ModulesTab";
 import "./styles.css";
 
 const API = "http://localhost:5001";
@@ -266,8 +267,22 @@ function App() {
 
       <div className="mx-auto min-h-screen max-w-6xl px-3 py-3 sm:px-6 sm:py-6">
 
-        <header className="mb-4 px-1 sm:mb-6">
-          <span className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRONHEART</span>
+        <header className="mb-4 px-1 sm:mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRONHEART</span>
+            <span className="micro hidden sm:inline text-zinc-500">· EMERGENCY ROBOT DASHBOARD</span>
+          </div>
+          <button
+            onClick={() => setTab("modules")}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+              tab === "modules"
+                ? "border-cyan-400 bg-cyan-950/40 text-cyan shadow-[0_0_12px_rgba(24,191,244,0.25)]"
+                : "border-line bg-zinc-900/60 text-zinc-300 hover:border-cyan hover:text-cyan"
+            }`}
+          >
+            <Boxes size={13} className={tab === "modules" ? "text-cyan" : "text-zinc-400"} />
+            <span>Modules Tab</span>
+          </button>
         </header>
 
         {banner && (
@@ -297,6 +312,9 @@ function App() {
             <div className="flex border-b border-line">
               <button onClick={() => setTab("camera")} className={`tab ${tab === "camera" ? "tab-active" : ""}`}><Camera size={14} /> Camera</button>
               <button onClick={() => setTab("log")} className={`tab ${tab === "log" ? "tab-active" : ""}`}><Terminal size={14} /> Falls</button>
+              <button onClick={() => setTab("modules")} className={`tab ${tab === "modules" ? "tab-active" : ""}`}>
+                <Boxes size={14} /> Modules
+              </button>
             </div>
             {tab === "camera" ? (
               <div className="relative p-3" style={{ minHeight: 280 }}>
@@ -310,7 +328,7 @@ function App() {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : tab === "log" ? (
               <div className="p-4 sm:p-5">
                 <div className="mb-5 flex items-center justify-between">
                   <p className="text-sm font-medium">Fall history</p>
@@ -337,6 +355,13 @@ function App() {
                   </div>
                 )}
               </div>
+            ) : (
+              <ModulesTab
+                backendOnline={backendOnline}
+                apiBase={API}
+                robotState={status}
+                onNotification={(n) => setBanner(n)}
+              />
             )}
           </section>
 
@@ -370,13 +395,14 @@ function App() {
               <Stat label="ROBOT" value={robotOnline ? "Online" : "Offline"} hint={robotStatus?.mode || "—"} accent={robotOnline} />
             </div>
 
-            <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-6">
+            <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
               <button className="action-button py-2" onClick={connectBLE}>{bleConnected ? "BLE OK" : "CONNECT BLE"}</button>
               <button className="action-button py-2" onClick={toggleWebcam}>{localCamera ? "STOP CAM" : "LOCAL CAM"}</button>
               <button className="action-button py-2" onClick={() => fetch(API + "/simulate/fall").catch(() => {})}>SIM FALL</button>
               <button className="action-button py-2" onClick={() => fetch(API + "/simulate/emergency").catch(() => {})}>SIM EMERGENCY</button>
               <button className="action-button py-2" onClick={() => fetch(API + "/simulate/reset").catch(() => {})}>RESET</button>
               <button className="action-button py-2" onClick={toggleSeek} disabled={robotLabel.disabled} style={!robotOnline ? { opacity: 0.4 } : {}}>ROBOT</button>
+              <button className={`action-button py-2 col-span-2 sm:col-span-1 ${tab === "modules" ? "border-cyan-400 text-cyan bg-cyan-950/30" : ""}`} onClick={() => setTab("modules")}>MODULES</button>
             </div>
           </section>
 
