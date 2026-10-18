@@ -343,8 +343,21 @@ function App() {
           {/* BOTTOM — Stats spanning full width */}
           <section className="panel p-4 sm:p-5 lg:col-span-2">
             <div className="flex items-center justify-between border-b border-[#242832] pb-3">
-              <span className="micro">G-FORCE</span>
-              <span className="gforce" style={currentG > 1.5 ? { color: "#ef4444" } : {}}>{currentG.toFixed(2)}<span className="text-2xl">g</span></span>
+              <div className="flex items-center gap-3">
+                <div className="flex items-baseline gap-2">
+                  <span className="micro">POWER</span>
+                  <span className="gforce text-cyan">67<span className="text-2xl">%</span></span>
+                </div>
+                <div className="battery-segments">
+                  {Array.from({ length: 20 }, (_, i) => <div key={i} className={`battery-seg ${i < 13 ? "battery-seg-on" : ""}`} />)}
+                </div>
+              </div>
+              <div>
+                <div className="flex items-baseline gap-2 justify-end">
+                  <span className="micro">G-FORCE</span>
+                  <span className="gforce" style={currentG > 1.5 ? { color: "#ef4444" } : {}}>{currentG.toFixed(2)}<span className="text-2xl">g</span></span>
+                </div>
+              </div>
             </div>
             <div><GForceChart data={gforceHistory.slice(-MAX_G_POINTS)} /></div>
 
