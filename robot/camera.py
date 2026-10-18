@@ -10,7 +10,9 @@ import subprocess
 HERE = os.path.dirname(os.path.abspath(__file__))
 SWIFT_SRC = os.path.join(HERE, "list_cameras.swift")
 BINARY = os.path.expanduser("~/.cache/htv/list_cameras")
-CAMERA_NAME = "iphone"     # a camera whose name contains this (any case) is the robot's camera
+# The iPhone shows up as "<phone's name> Camera" (e.g. "ye Camera"), so rather than look for "iPhone",
+# skip the Mac's own cameras and take what's left
+MAC_CAMERAS = ("macbook", "facetime", "desk view", "capture screen", "studio display")
 
 
 def list_cameras():
@@ -32,14 +34,16 @@ def list_cameras():
 
 
 def find_camera():
-    """OpenCV index of the iPhone camera, or None if it isn't connected right now."""
+    """OpenCV index of the iPhone camera (an "iPhone" camera, else any camera that isn't the Mac's own),
+    or None if it isn't connected right now."""
     cams = list_cameras()
     if cams is None:
         return None
-    for idx, name in cams:
-        if CAMERA_NAME in name.lower():
+    others = [(idx, name) for idx, name in cams if not any(m in name.lower() for m in MAC_CAMERAS)]
+    for idx, name in others:
+        if "iphone" in name.lower():
             return idx
-    return None
+    return others[0][0] if others else None
 
 
 if __name__ == "__main__":

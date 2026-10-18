@@ -93,6 +93,20 @@ function App() {
 
   useEffect(() => {
     emergencyAudio.current.loop = true;
+    // Browsers only allow sound after the page has been clicked/tapped once: on the first click,
+    // play-and-pause each clip so later alerts (with nobody touching the page) can play
+    const unlock = () => {
+      for (const a of [emergencyAudio, ownerFellAudio, willingAudio]) {
+        a.current.muted = true;
+        a.current.play().then(() => { a.current.pause(); a.current.muted = false; a.current.currentTime = 0; })
+          .catch(() => { a.current.muted = false; });
+      }
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => { window.removeEventListener("pointerdown", unlock); window.removeEventListener("keydown", unlock); };
   }, []);
 
   useEffect(() => {
@@ -100,12 +114,12 @@ function App() {
     const prev = lastRobotMode.current;
     lastRobotMode.current = mode;
 
+    // Looking for a person to bring back: loop the call for help the whole time (re-tried on every
+    // status update, so it starts even if an earlier play() was blocked)
     if (mode === "seeking" || mode === "scanning") {
       arrivalPlayed.current = false;
-      if (prev !== "seeking" && prev !== "scanning") {
-        emergencyAudio.current.currentTime = 0;
-        emergencyAudio.current.play().catch(() => {});
-      }
+      if (prev !== "seeking" && prev !== "scanning") emergencyAudio.current.currentTime = 0;
+      if (emergencyAudio.current.paused) emergencyAudio.current.play().catch(() => {});
     } else {
       emergencyAudio.current.pause();
     }
