@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
-import { Camera, Terminal, Boxes } from "lucide-react";
+import { Camera, Terminal } from "lucide-react";
 import ModulesTab from "./ModulesTab";
 import OnboardingTerminal from "./OnboardingTerminal";
 import "./styles.css";
 
-const API = "http://localhost:5001";
-const ROBOT = "http://localhost:5002";
+const API = "/api";
+const ROBOT = "/robot";
 const BLE_SERVICE_UUID = "19b10000-e8f2-537e-4f6c-d104768a1214";
 const FALL_CHAR_UUID = "19b10001-e8f2-537e-4f6c-d104768a1214";
 const GFORCE_CHAR_UUID = "19b10002-e8f2-537e-4f6c-d104768a1214";
@@ -119,6 +119,52 @@ function App() {
   const streamRef = useRef(null);
 
   const [banner, setBanner] = useState(null);
+
+  // Voice messages
+  const emergencyAudio = useRef(new Audio("/emergency.ogg"));
+  const ownerFellAudio = useRef(new Audio("/owner-fell.ogg"));
+  const willingAudio = useRef(new Audio("/willing-to-help.ogg"));
+  const lastRobotMode = useRef(null);
+  const arrivalPlayed = useRef(false);
+
+  useEffect(() => {
+    emergencyAudio.current.loop = true;
+  }, []);
+
+  useEffect(() => {
+    const mode = robotStatus?.mode;
+    const prev = lastRobotMode.current;
+    lastRobotMode.current = mode;
+
+    if (mode === "seeking" || mode === "scanning") {
+      arrivalPlayed.current = false;
+      if (prev !== "seeking" && prev !== "scanning") {
+        emergencyAudio.current.currentTime = 0;
+        emergencyAudio.current.play().catch(() => {});
+      }
+    } else {
+      emergencyAudio.current.pause();
+    }
+
+    if (mode === "arrived" && !arrivalPlayed.current) {
+      arrivalPlayed.current = true;
+      ownerFellAudio.current.currentTime = 0;
+      ownerFellAudio.current.play().catch(() => {});
+      ownerFellAudio.current.onended = () => {
+        setTimeout(() => {
+          willingAudio.current.currentTime = 0;
+          willingAudio.current.play().catch(() => {});
+        }, 800);
+      };
+    }
+
+    if (!mode || mode === "follow") {
+      arrivalPlayed.current = false;
+      emergencyAudio.current.pause();
+      ownerFellAudio.current.pause();
+      willingAudio.current.pause();
+    }
+  }, [robotStatus]);
 
   // Backend polling
   useEffect(() => {
@@ -331,27 +377,14 @@ function App() {
             <span className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRONHEART</span>
             <span className="micro hidden sm:inline text-zinc-500">· EMERGENCY ROBOT DASHBOARD</span>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsOnboardingOpen(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-line bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-all hover:border-cyan hover:text-cyan"
-              title="Click to view or update host medical condition"
-            >
-              <Terminal size={13} className="text-cyan" />
-              <span>Host: {hostCondition ? hostCondition.split(" (")[0] : "Not Set"}</span>
-            </button>
-            <button
-              onClick={() => setTab("modules")}
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
-                tab === "modules"
-                  ? "border-cyan-400 bg-cyan-950/40 text-cyan shadow-[0_0_12px_rgba(24,191,244,0.25)]"
-                  : "border-line bg-zinc-900/60 text-zinc-300 hover:border-cyan hover:text-cyan"
-              }`}
-            >
-              <Boxes size={13} className={tab === "modules" ? "text-cyan" : "text-zinc-400"} />
-              <span>Modules Tab</span>
-            </button>
-          </div>
+          <button
+            onClick={() => setIsOnboardingOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-line bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-all hover:border-cyan hover:text-cyan"
+            title="Click to view or update host medical condition"
+          >
+            <Terminal size={13} className="text-cyan" />
+            <span>Host: {hostCondition ? hostCondition.split(" (")[0] : "Not Set"}</span>
+          </button>
         </header>
 
         {banner && (
@@ -381,9 +414,7 @@ function App() {
             <div className="flex border-b border-line">
               <button onClick={() => setTab("camera")} className={`tab ${tab === "camera" ? "tab-active" : ""}`}><Camera size={14} /> Camera</button>
               <button onClick={() => setTab("log")} className={`tab ${tab === "log" ? "tab-active" : ""}`}><Terminal size={14} /> Falls</button>
-              <button onClick={() => setTab("modules")} className={`tab ${tab === "modules" ? "tab-active" : ""}`}>
-                <Boxes size={14} /> Modules
-              </button>
+              <button onClick={() => setTab("modules")} className={`tab ${tab === "modules" ? "tab-active" : ""}`}>Modules</button>
             </div>
             {tab === "camera" ? (
               <div className="relative p-3" style={{ minHeight: 280 }}>
@@ -464,7 +495,7 @@ function App() {
               <Stat label="ROBOT" value={robotOnline ? "Online" : "Offline"} hint={robotStatus?.mode || "—"} accent={robotOnline} />
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+            <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-6">
               <button className="action-button py-2" onClick={connectBLE}>{bleConnected ? "BLE OK" : "CONNECT BLE"}</button>
               <button className="action-button py-2" onClick={toggleWebcam}>{localCamera ? "STOP CAM" : "LOCAL CAM"}</button>
               <button className="action-button py-2" onClick={() => fetch(API + "/simulate/fall").catch(() => {})}>SIM FALL</button>
@@ -491,7 +522,6 @@ function App() {
                 RESET
               </button>
               <button className="action-button py-2" onClick={toggleSeek} disabled={robotLabel.disabled} style={!robotOnline ? { opacity: 0.4 } : {}}>ROBOT</button>
-              <button className={`action-button py-2 col-span-2 sm:col-span-1 ${tab === "modules" ? "border-cyan-400 text-cyan bg-cyan-950/30" : ""}`} onClick={() => setTab("modules")}>MODULES</button>
             </div>
           </section>
 
