@@ -508,6 +508,7 @@ def start_http(follower, seeker, port, phone=None):
                 "follow_state": follower.state,
                 "camera": bool(seeker and seeker.vision.ok),
                 "emergency": bool(seeker and seeker.emergency),
+                "awaiting_confirm": bool(seeker and seeker.state == "arrived" and seeker.emergency and not seeker.confirmed),
                 "people": seeker.vision.people if seeker else 0,
                 "target": {k: round(t[k], 2) for k in ("cx", "area", "bottom")} if t else None,
             }
@@ -538,6 +539,12 @@ def start_http(follower, seeker, port, phone=None):
                 self._json({"ok": True})
             elif self.path.startswith("/seek"):
                 toggle_seek(follower, seeker)
+                self._json(self._status())
+            elif self.path.startswith("/confirm") and seeker:
+                seeker.confirm()
+                self._json(self._status())
+            elif self.path.startswith("/reject") and seeker:
+                seeker.reject()
                 self._json(self._status())
             else:
                 self._head(404, "text/plain")

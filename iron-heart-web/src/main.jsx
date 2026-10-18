@@ -223,6 +223,16 @@ function App() {
     catch { setRobotStatus(null); }
   }, []);
 
+  const confirmRobot = useCallback(async () => {
+    try { setRobotStatus(await fetch(ROBOT + "/confirm", { method: "POST" }).then(r => r.json())); }
+    catch {}
+  }, []);
+
+  const rejectRobot = useCallback(async () => {
+    try { setRobotStatus(await fetch(ROBOT + "/reject", { method: "POST" }).then(r => r.json())); }
+    catch {}
+  }, []);
+
   const activeFalls = bleConnected ? localFalls : falls;
   const fallCount = activeFalls.length;
   const cancelled = activeFalls.filter(x => x.outcome === "cancelled");
@@ -236,8 +246,24 @@ function App() {
     return { text: m[robotStatus.mode] || robotStatus.mode, disabled: robotStatus.mode === "follow" && !robotStatus.camera };
   })();
 
+  const showConfirm = robotStatus?.awaiting_confirm;
+
   return (
     <div className="min-h-screen bg-[#090b0f] text-zinc-100">
+
+      {showConfirm && (
+        <div className="confirm-overlay">
+          <div className="confirm-box">
+            <p className="text-lg font-semibold">Someone nearby has fallen</p>
+            <p className="mt-2 text-sm text-zinc-400">This robot can lead you to them. Will you follow?</p>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button onClick={rejectRobot} className="confirm-btn">No</button>
+              <button onClick={confirmRobot} className="confirm-btn confirm-yes">Yes, lead me</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto min-h-screen max-w-6xl px-3 py-3 sm:px-6 sm:py-6">
 
         <header className="mb-4 px-1 sm:mb-6">

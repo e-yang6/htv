@@ -40,4 +40,10 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 @keyframes heartbeat { 0%,100% { transform:scale(1); } 7% { transform:scale(1.15); } 14% { transform:scale(.97); } 20% { transform:scale(1.08); } 31% { transform:scale(1); } }
 @keyframes auraPulse { 0%,100% { opacity:.18; transform:scale(.85); } 8% { opacity:.55; transform:scale(1.15); } 19% { opacity:.25; transform:scale(.93); } 30% { opacity:.45; transform:scale(1.06); } }
+.confirm-overlay { position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.7); padding:16px; }
+.confirm-box { width:100%; max-width:360px; background:#13161d; border:1px solid #282d36; border-radius:14px; padding:24px; text-align:center; }
+.confirm-btn { padding:12px 16px; border:1px solid #282d36; border-radius:8px; background:transparent; color:#a0a6b4; font-size:13px; cursor:pointer; transition:background .2s; }
+.confirm-btn:hover { background:rgba(255,255,255,.04); }
+.confirm-yes { border-color:rgba(0,120,255,.4); color:#60b8ff; }
+.confirm-yes:hover { background:rgba(0,120,255,.1); }
 @media (max-width:480px) { .panel { border-radius:11px; } .heart-stage { height:215px; } .micro { font-size:8px; } }

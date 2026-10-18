@@ -222,12 +222,14 @@ class Seeker:
         self.last_seen = 0.0
         self.driving_home = False
         self.emergency = False    # started by a fall rather than the button
+        self.confirmed = False    # True once the frontend confirms "lead this person back"
         self.arrived_at = 0.0
         self.arm_cmd = None       # b"o"/b"p" for the control loop to send
 
     # --- control ---
     def start(self, heading, emergency=False):
         self.emergency = emergency
+        self.confirmed = False
         self.vision.exclude_lying = emergency
         self.x = self.y = 0.0
         self.origin_heading = heading
@@ -245,7 +247,19 @@ class Seeker:
         self.action = None
         self.state = "off"
         self.emergency = False
+        self.confirmed = False
         self.vision.exclude_lying = False
+
+    def confirm(self):
+        if self.state == "arrived" and not self.confirmed:
+            self.confirmed = True
+            self.arrived_at = time.monotonic()
+
+    def reject(self):
+        if self.state == "arrived" and not self.confirmed:
+            self.last_seen = time.monotonic()
+            self.scanned = 0.0
+            self.state = "seeking"
 
     @property
     def active(self):
@@ -285,6 +299,8 @@ class Seeker:
         if self.state in ("seeking", "scanning"):
             return self._seek(now)
         if self.state == "arrived":
+            if self.emergency and not self.confirmed:
+                return (0, 0)
             if self.emergency:
                 return self._wave(now)
             return (0, 0)
