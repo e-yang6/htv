@@ -92,42 +92,34 @@ export default function ModulesTab({ backendOnline, apiBase, robotState, onNotif
         />
       </div>
 
-      {/* Module tray */}
-      <div>
-        <span className="micro">AVAILABLE MODULES</span>
-        <div className="mt-2 grid grid-cols-1 gap-2">
-          {MODULE_DEFINITIONS.map(mod => {
-            const onLeft = attached.left_arm === mod.id;
-            const onRight = attached.right_arm === mod.id;
-            const slotLabel = onLeft ? "Left" : onRight ? "Right" : null;
-            return (
-              <div
-                key={mod.id}
-                draggable
-                onDragStart={e => onDragStart(e, mod.id)}
-                className={`rounded-lg border bg-[#0f1117] px-3 py-2.5 cursor-grab active:cursor-grabbing transition-all ${
-                  draggedId === mod.id ? "border-cyan-500/40 opacity-50" : "border-[#242832] hover:border-zinc-600"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium text-zinc-200">{mod.name}</div>
-                    <div className="micro mt-1 text-zinc-500">{mod.description}</div>
-                  </div>
-                  {slotLabel && <span className="ml-2 shrink-0 micro text-cyan">{slotLabel}</span>}
-                </div>
-                {/* Tap-to-attach buttons for mobile */}
-                {!slotLabel && (
-                  <div className="mt-2 grid grid-cols-2 gap-2 sm:hidden">
-                    <button onClick={() => attachModule("left_arm", mod.id)} className="action-button py-1.5 text-[9px]">LEFT ARM</button>
-                    <button onClick={() => attachModule("right_arm", mod.id)} className="action-button py-1.5 text-[9px]">RIGHT ARM</button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <h2 className="micro">AVAILABLE MODULES</h2>
+      <ul className="grid grid-cols-1 gap-2">
+        {MODULE_DEFINITIONS.map(mod => {
+          const slotLabel = attached.left_arm === mod.id ? "Left" : attached.right_arm === mod.id ? "Right" : null;
+          return (
+            <li
+              key={mod.id}
+              draggable
+              onDragStart={e => onDragStart(e, mod.id)}
+              className={`flex flex-wrap items-center gap-x-3 gap-y-2 border bg-[#0f1117] px-3 py-2.5 cursor-grab active:cursor-grabbing ${
+                draggedId === mod.id ? "border-cyan-500/40 opacity-50" : "border-[#242832] hover:border-zinc-600"
+              }`}
+            >
+              <p className="min-w-0 flex-1 text-xs font-medium text-zinc-200">
+                {mod.name}
+                <small className="micro mt-1 block font-normal text-zinc-500">{mod.description}</small>
+              </p>
+              {slotLabel ? <span className="micro text-cyan">{slotLabel}</span> : (
+                <>
+                  {/* Tap-to-attach for touch screens (no drag and drop) */}
+                  <button onClick={() => attachModule("left_arm", mod.id)} className="action-button px-3 py-1.5 text-[9px] sm:hidden">LEFT ARM</button>
+                  <button onClick={() => attachModule("right_arm", mod.id)} className="action-button px-3 py-1.5 text-[9px] sm:hidden">RIGHT ARM</button>
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -141,7 +133,7 @@ function ArmSlot({ label, slot, moduleId, dragOver, onDragOver, onDragLeave, onD
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      className={`rounded-lg border p-3 transition-all min-h-[100px] flex flex-col ${
+      className={`border p-3 min-h-[100px] flex flex-col ${
         dragOver
           ? "border-cyan-500/50 bg-cyan-950/20"
           : mod
@@ -149,22 +141,13 @@ function ArmSlot({ label, slot, moduleId, dragOver, onDragOver, onDragLeave, onD
           : "border-dashed border-zinc-700/50 bg-black/20"
       }`}
     >
-      <div className="flex items-center justify-between mb-2">
+      <header className="mb-2 flex items-center justify-between">
         <span className="micro font-semibold text-zinc-300">{label.toUpperCase()}</span>
-        {mod && (
-          <button onClick={onDetach} className="micro text-zinc-500 hover:text-red-400 transition-colors">DETACH</button>
-        )}
-      </div>
-
-      {mod ? (
-        <div className="flex-1 flex items-center">
-          <div className="text-xs font-medium text-zinc-200">{mod.name}</div>
-        </div>
-      ) : (
-        <div className="flex-1 flex items-center justify-center">
-          <span className="text-[10px] text-zinc-500">Drag module here</span>
-        </div>
-      )}
+        {mod && <button onClick={onDetach} className="micro text-zinc-500 hover:text-red-400">DETACH</button>}
+      </header>
+      {mod
+        ? <strong className="text-xs font-medium text-zinc-200">{mod.name}</strong>
+        : <span className="m-auto text-[10px] text-zinc-500">Drag module here</span>}
     </div>
   );
 }

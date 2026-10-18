@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
-import { Camera, Terminal } from "lucide-react";
 import ModulesTab from "./ModulesTab";
 import OnboardingTerminal from "./OnboardingTerminal";
 import "./styles.css";
@@ -91,9 +90,8 @@ const DEFAULT_INSTRUCTIONS = [
 function Stat({ label, value, hint, accent = false }) {
   return (
     <div className="min-w-0">
-      <div className="micro mb-2">{label}</div>
-      <div className={`stat-value ${accent ? "text-cyan" : ""}`}>{value}</div>
-      <div className="micro mt-2 text-zinc-600">{hint}</div>
+      <dt className="micro mb-2">{label}</dt>
+      <dd className={`stat-value ${accent ? "text-cyan" : ""}`}>{value}{hint && <small className="micro mt-2 block text-zinc-600">{hint}</small>}</dd>
     </div>
   );
 }
@@ -392,8 +390,6 @@ function App() {
 
   const activeFalls = bleConnected ? localFalls : falls;
   const fallCount = activeFalls.length;
-  const cancelled = activeFalls.filter(x => x.outcome === "cancelled");
-  const avgResp = cancelled.length ? (cancelled.reduce((a, x) => a + x.response_ms, 0) / cancelled.length / 1000).toFixed(1) + "s" : "—";
   const bleLabel = bleConnected ? "Connected" : bleConnecting ? "Scanning..." : status?.ble_connected ? "Server BLE" : "Off";
   const videoSrc = localCamera ? null : backendOnline ? API + "/video" : robotOnline ? ROBOT + "/video" : null;
 
@@ -464,25 +460,19 @@ function App() {
 
       <div className="mx-auto min-h-screen max-w-6xl px-3 py-3 sm:px-6 sm:py-6">
 
-        <header className="mb-4 px-1 sm:mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRONHEART</span>
-            <span className="micro hidden sm:inline text-zinc-500">· EMERGENCY ROBOT DASHBOARD</span>
-          </div>
+        <header className="mb-4 flex items-center justify-between px-1 sm:mb-6">
+          <h1 className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRONHEART</h1>
           <button
             onClick={() => setIsOnboardingOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-line bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-all hover:border-cyan hover:text-cyan"
+            className="border border-line px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-cyan hover:text-cyan"
             title="Click to view or update host medical condition"
           >
-            <Terminal size={13} className="text-cyan" />
-            <span>Host: {hostCondition ? hostCondition.split(" (")[0] : "Not Set"}</span>
+            Host: {hostCondition ? hostCondition.split(" (")[0] : "Not Set"}
           </button>
         </header>
 
         {banner && (
-          <div className={`mb-4 rounded-lg px-4 py-3 text-center text-sm ${banner.type === "crit" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-300"}`}>
-            {banner.text}
-          </div>
+          <p className={`banner ${banner.type === "crit" ? "banner-crit" : "banner-warn"}`}>{banner.text}</p>
         )}
 
         <main className="grid gap-4 lg:grid-cols-2 lg:gap-5">
@@ -517,59 +507,48 @@ function App() {
 
           {/* RIGHT — Camera */}
           <section className="panel overflow-hidden">
-            <div className="flex border-b border-line">
-              <button onClick={() => setTab("camera")} className={`tab ${tab === "camera" ? "tab-active" : ""}`}><Camera size={14} /> Camera</button>
-              <button onClick={() => setTab("log")} className={`tab ${tab === "log" ? "tab-active" : ""}`}><Terminal size={14} /> Falls</button>
-              <button onClick={() => setTab("modules")} className={`tab ${tab === "modules" ? "tab-active" : ""}`}>Modules</button>
-            </div>
+            <nav className="flex border-b border-line">
+              {[["camera", "Camera"], ["log", "Falls"], ["modules", "Modules"]].map(([id, label]) => (
+                <button key={id} onClick={() => setTab(id)} className={`tab ${tab === id ? "tab-active" : ""}`}>{label}</button>
+              ))}
+            </nav>
             {tab === "camera" ? (
-              <div className="relative p-3" style={{ minHeight: 280 }}>
+              <figure className="m-0 p-3">
                 {localCamera ? (
-                  <video ref={videoRef} autoPlay playsInline className="h-full w-full object-cover" />
+                  <video ref={videoRef} autoPlay playsInline className="w-full" />
                 ) : videoSrc ? (
                   <>
-                    <img src={videoSrc} alt="" className="w-full cursor-crosshair" onClick={selectFollow}
+                    <img src={videoSrc} alt="Robot camera" className="w-full cursor-crosshair" onClick={selectFollow}
                          onError={() => setFeedError(true)} />
-                    {followLabel && (
-                      <div className="absolute left-5 top-5 rounded bg-black/60 px-2 py-1 text-xs text-zinc-200">{followLabel}</div>
-                    )}
-                    <button onClick={resetRobotCamera} className="absolute right-5 top-5 rounded bg-black/60 px-2 py-1 text-xs text-zinc-300 hover:text-cyan">
-                      Reset camera
-                    </button>
+                    <figcaption className="feed-caption">
+                      <span>{followLabel}</span>
+                      <button onClick={resetRobotCamera} className="hover:text-cyan">Reset camera</button>
+                    </figcaption>
                   </>
                 ) : (
-                  <div className="flex h-full flex-col items-center justify-center gap-3 py-24 text-zinc-500">
-                    <Camera size={24} /><span className="text-xs">Backend video stream offline</span>
-                  </div>
+                  <figcaption className="py-24 text-center text-xs text-zinc-500">Backend video stream offline</figcaption>
                 )}
-              </div>
+              </figure>
             ) : tab === "log" ? (
-              <div className="p-4 sm:p-5">
-                <div className="mb-5 flex items-center justify-between">
-                  <p className="text-sm font-medium">Fall history</p>
-                  <span className="micro">{fallCount} events</span>
-                </div>
-                {activeFalls.length === 0 ? (
-                  <div className="rounded-lg border border-line bg-black/20 p-6 text-center">
-                    <div className="text-xs text-zinc-500">No falls detected</div>
-                  </div>
-                ) : (
-                  <div className="space-y-0">
+              activeFalls.length === 0 ? (
+                <p className="p-6 text-center text-xs text-zinc-500">No falls detected</p>
+              ) : (
+                <table className="fall-log">
+                  <thead><tr><th>Time</th><th>Event</th><th>Impact</th><th>Response</th></tr></thead>
+                  <tbody>
                     {[...activeFalls].reverse().map((f, i) => (
-                      <div key={i} className="log-row">
-                        <span className="log-time">{f.time_str}</span>
-                        <div className="min-w-0 flex-1">
-                          <div className={`text-sm ${f.outcome === "emergency" ? "text-red-400" : "text-emerald-400"}`}>
-                            {f.outcome === "emergency" ? "Emergency alert" : "Fall cancelled"}
-                          </div>
-                          <div className="micro mt-2">{f.impact_g ? f.impact_g.toFixed(2) + "g" : "—"} · {(f.response_ms / 1000).toFixed(1)}s</div>
-                        </div>
-                        <span className="event-dot" style={f.outcome === "emergency" ? { background: "#ef4444", boxShadow: "0 0 9px rgba(239,68,68,.5)" } : { background: "#26d887", boxShadow: "0 0 9px rgba(38,216,135,.5)" }} />
-                      </div>
+                      <tr key={i}>
+                        <td>{f.time_str}</td>
+                        <td className={f.outcome === "emergency" ? "text-red-400" : "text-emerald-400"}>
+                          {f.outcome === "emergency" ? "Emergency alert" : "Fall cancelled"}
+                        </td>
+                        <td>{f.impact_g ? f.impact_g.toFixed(2) + "g" : "—"}</td>
+                        <td>{(f.response_ms / 1000).toFixed(1)}s</td>
+                      </tr>
                     ))}
-                  </div>
-                )}
-              </div>
+                  </tbody>
+                </table>
+              )
             ) : (
               <ModulesTab
                 backendOnline={backendOnline}
@@ -582,35 +561,17 @@ function App() {
 
           {/* BOTTOM — Stats spanning full width */}
           <section className="panel p-4 sm:p-5 lg:col-span-2">
-            <div className="flex items-center justify-between border-b border-[#242832] pb-3">
-              <div className="flex items-center gap-3">
-                <div className="flex items-baseline gap-2">
-                  <span className="micro">POWER</span>
-                  <span className="gforce text-cyan">67<span className="text-2xl">%</span></span>
-                </div>
-                <div className="battery-segments">
-                  {Array.from({ length: 20 }, (_, i) => <div key={i} className={`battery-seg ${i < 13 ? "battery-seg-on" : ""}`} />)}
-                </div>
-              </div>
+            <dl className="grid grid-cols-3 gap-3 border-b border-[#242832] pb-3">
               <div>
-                <div className="flex items-baseline gap-2 justify-end">
-                  <span className="micro">G-FORCE</span>
-                  <span className="gforce" style={currentG > 1.5 ? { color: "#ef4444" } : {}}>{currentG.toFixed(2)}<span className="text-2xl">g</span></span>
-                </div>
+                <dt className="micro">G-FORCE</dt>
+                <dd className="gforce" style={currentG > 1.5 ? { color: "#ef4444" } : {}}>{currentG.toFixed(2)}<span className="text-2xl">g</span></dd>
               </div>
-            </div>
-            <div><GForceChart data={gforceHistory.slice(-MAX_G_POINTS)} /></div>
-
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-              <Stat label="PEOPLE" value={String(personCount).padStart(2, "0")} hint="detected" />
-              <Stat label="ACTIVITY" value={activityLevel} hint="level" />
-              <Stat label="BLE" value={bleLabel} hint={bleConnected ? "Web BLE" : backendOnline ? "server" : "—"} accent={bleConnected || status?.ble_connected} />
-              <Stat label="FALLS" value={String(fallCount).padStart(2, "0")} hint="total" accent={fallCount > 0} />
-              <Stat label="AVG RESPONSE" value={avgResp} hint="cancelled" />
+              <Stat label="BLE" value={bleLabel} hint={bleConnected ? "Web BLE" : backendOnline ? "server" : null} accent={bleConnected || status?.ble_connected} />
               <Stat label="ROBOT" value={robotOnline ? "Online" : "Offline"}
-                    hint={robotStatus ? (robotStatus.mode === "follow" ? `${robotStatus.following} · ${robotStatus.follow_state}` : robotStatus.mode) : "—"}
+                    hint={robotStatus ? (robotStatus.mode === "follow" ? `${robotStatus.following} · ${robotStatus.follow_state}` : robotStatus.mode) : null}
                     accent={robotOnline} />
-            </div>
+            </dl>
+            <GForceChart data={gforceHistory.slice(-MAX_G_POINTS)} />
 
             <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-7">
               <button className="action-button py-2" onClick={connectBLE}>{bleConnected ? "BLE OK" : "CONNECT BLE"}</button>

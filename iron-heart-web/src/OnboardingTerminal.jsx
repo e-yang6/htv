@@ -126,19 +126,10 @@ export default function OnboardingTerminal({ apiBase = "http://localhost:5001", 
       }}
     >
       <div
-        className="w-full max-w-xl overflow-hidden rounded-lg border border-zinc-800 bg-black font-mono text-zinc-100 shadow-2xl"
+        className="w-full max-w-xl border border-zinc-800 bg-black p-6 font-mono text-zinc-100"
         role="dialog"
         aria-modal="true"
       >
-        {/* Minimal Terminal Header: Just inactive aesthetic dots, no skip/close */}
-        <div className="flex items-center gap-2 border-b border-zinc-900 bg-zinc-950/60 px-4 py-2.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-700/60" />
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-800/60" />
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-800/60" />
-        </div>
-
-        {/* Terminal Body */}
-        <div className="p-6">
           <div className="mb-4 text-xs text-zinc-400">
             enter primary condition:
           </div>
@@ -212,13 +203,12 @@ export default function OnboardingTerminal({ apiBase = "http://localhost:5001", 
                 key={idx}
                 type="button"
                 onClick={() => fillChip(chip)}
-                className="rounded border border-zinc-800 bg-zinc-950 px-2.5 py-1 text-xs text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-300"
+                className="border border-zinc-800 bg-zinc-950 px-2.5 py-1 text-xs text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-300"
               >
                 {chip}
               </button>
             ))}
           </div>
-        </div>
       </div>
     </div>
   );
