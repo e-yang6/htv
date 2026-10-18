@@ -214,6 +214,7 @@ def status():
     })
 
 
+@app.route('/host/profile', methods=['GET', 'POST'])
 @app.route('/api/host/profile', methods=['GET', 'POST'])
 def host_profile_endpoint():
     global host_condition
