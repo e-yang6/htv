@@ -179,8 +179,8 @@ def start_http(follower, seeker, phone, port, dash=None, dash_port=None):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
 
-        def _json(self, obj):
-            self._head(200, "application/json")
+        def _json(self, obj, code=200):
+            self._head(code, "application/json")
             self.wfile.write(json.dumps(obj).encode())
 
         def do_GET(self):

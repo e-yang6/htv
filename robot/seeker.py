@@ -18,6 +18,7 @@ import cv2
 import numpy as np
 
 from calibration import HERE, TURN_RATE_FILE, save_calibration
+from host_profile import get_host_condition, speak_emergency
 
 # --- Camera ---
 CAMERA_FOV_DEG = 60.0     # horizontal field of view of the chest camera (rough is fine)
@@ -49,6 +50,8 @@ LYING_ASPECT = 1.3        # box this many times wider than tall (and not cut off
 WAVE_S = 5.0              # (no-confirm path) wave this long on arrival, then lead them back. During a fall
                           # rescue it waves the whole time the dashboard asks "will you help?" instead
 WAVE_PERIOD_S = 0.6
+RECITE_AFTER_S = 6.0      # on reaching a bystander, say the host's condition this long after arriving
+                          # (after the dashboard's "owner fell" / "willing to help" clips)
 
 REJECT_TURN_DEG = 90      # bystander rejected: turn this far away before looking for someone else
 
@@ -392,6 +395,7 @@ class Seeker:
         self.rate_left = self.rate_right = turn_rate_dps   # per direction; the bridge sets the measured ones
         self.emergency = False    # started by a fall rather than the button
         self.confirmed = False    # True once the frontend confirms "lead this person back"
+        self.recited_condition = False   # said the host's condition to this bystander yet
         self.arrived_at = 0.0
         self.arm_cmd = None       # b"o"/b"p" for the control loop to send
 
@@ -399,6 +403,7 @@ class Seeker:
     def start(self, heading, emergency=False):
         self.emergency = emergency
         self.confirmed = False
+        self.recited_condition = False
         self.vision.exclude_lying = emergency
         self.vision.locked = None
         self.vision.lock_on = True
@@ -467,6 +472,7 @@ class Seeker:
             self.scanned = 0.0
             self.vision.locked = None
             self.arm_cmd = b"p"   # stop waving at them
+            self.recited_condition = False   # tell the next person too
             self._wave_phase = None
             self.state = "scanning"
             self._turn(REJECT_TURN_DEG, now)
@@ -510,8 +516,15 @@ class Seeker:
             return self._seek(now)
         if self.state == "arrived":
             if self.emergency and not self.confirmed:
-                # Asking "will you help?" on the dashboard: wave the whole time to get their attention
+                # Asking "will you help?" on the dashboard: wave the whole time to get their attention,
+                # and say what's wrong with the host once the dashboard's voice clips have played
                 self._wave_arms(now - self.arrived_at, float("inf"))
+                if not self.recited_condition and now - self.arrived_at >= RECITE_AFTER_S:
+                    self.recited_condition = True
+                    msg = (f"Emergency! Please help! My host has collapsed and has {get_host_condition()}. "
+                           "Please follow me to assist them!")
+                    print(f"[Seeker TTS] {msg}")
+                    speak_emergency(msg)
                 return (0, 0)
             if self.emergency:
                 return self._wave(now)

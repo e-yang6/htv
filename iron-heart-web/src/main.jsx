@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { Camera, Terminal } from "lucide-react";
 import ModulesTab from "./ModulesTab";
+import OnboardingTerminal from "./OnboardingTerminal";
 import "./styles.css";
 
 const API = "/api";
@@ -43,6 +44,50 @@ function GForceChart({ data, max = 4 }) {
   );
 }
 
+const EMERGENCY_INSTRUCTIONS = {
+  "Severe Peanut Allergy": [
+    "Locate the EpiPen on the robot's arm module",
+    "Remove the blue safety cap",
+    "Press the orange tip firmly against the outer thigh",
+    "Hold for 10 seconds, then remove",
+    "Call 911 immediately",
+    "Place them in recovery position on their side",
+  ],
+  "Type 1 Diabetes": [
+    "Check if they are conscious and responsive",
+    "If conscious, give them sugar — juice, candy, or glucose tabs",
+    "If unconscious, do NOT put anything in their mouth",
+    "Place them in recovery position on their side",
+    "Call 911 immediately",
+    "Monitor breathing until help arrives",
+  ],
+  "Severe Asthma": [
+    "Help them sit upright — do not lay them down",
+    "Check the robot's arm for an inhaler module",
+    "Help them take 1 puff, wait 30 seconds, repeat up to 4 puffs",
+    "Keep them calm and encourage slow breathing",
+    "Call 911 if no improvement after 4 puffs",
+    "Do not leave them alone",
+  ],
+  "Cardiac History / Pacemaker Alert": [
+    "Call 911 immediately — mention pacemaker",
+    "If unconscious and not breathing, begin CPR",
+    "If an AED is nearby, use it — it will detect the pacemaker",
+    "Do NOT place AED pads directly over the pacemaker bump",
+    "Place them flat on their back on a hard surface",
+    "Continue CPR until paramedics arrive",
+  ],
+};
+
+const DEFAULT_INSTRUCTIONS = [
+  "Call 911 immediately",
+  "Check if the person is conscious and breathing",
+  "Place them in recovery position on their side",
+  "Keep them warm and comfortable",
+  "Do not move them unless they are in danger",
+  "Stay with them until help arrives",
+];
+
 function Stat({ label, value, hint, accent = false }) {
   return (
     <div className="min-w-0">
@@ -55,6 +100,25 @@ function Stat({ label, value, hint, accent = false }) {
 
 function App() {
   const [tab, setTab] = useState("camera");
+
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("onboard") || params.has("reset")) return true;
+      return sessionStorage.getItem("ironheart_session_onboarded") !== "true";
+    } catch {
+      return true;
+    }
+  });
+
+  const [hostCondition, setHostCondition] = useState(() => {
+    try {
+      return localStorage.getItem("ironheart_host_condition") || "";
+    } catch {
+      return "";
+    }
+  });
+
 
   const [backendOnline, setBackendOnline] = useState(false);
   const [status, setStatus] = useState(null);
@@ -161,9 +225,17 @@ function App() {
           setCurrentG(s.current_g);
           setActivityLevel(s.activity_level);
           setGforceHistory(g.values || []);
-          if (s.emergency) setBanner({ type: "crit", text: "Emergency — seeking nearest person (" + (s.direction || "scanning") + ")" });
-          else if (s.fall_waiting) setBanner({ type: "warn", text: "Fall detected — waiting for response" });
-          else setBanner(null);
+          if (s.emergency) {
+            const condText = hostCondition || s.host_condition || "an urgent medical condition";
+            setBanner({ type: "crit", text: `Emergency — Host Condition: ${condText} — seeking nearest person (${s.direction || "scanning"})` });
+          } else {
+            if (s.fall_waiting) setBanner({ type: "warn", text: "Fall detected — waiting for response" });
+            else setBanner(null);
+          }
+
+          if (s.host_condition && s.host_condition !== "Not specified" && !hostCondition) {
+            setHostCondition(s.host_condition);
+          }
         }
         if (feedError && !localCamera) setFeedError(false);
       } catch {
@@ -172,7 +244,7 @@ function App() {
       }
     }, 800);
     return () => clearInterval(id);
-  }, [bleConnected, feedError, localCamera]);
+  }, [bleConnected, feedError, localCamera, hostCondition]);
 
   // Robot polling
   useEffect(() => {
@@ -230,7 +302,8 @@ function App() {
           setLocalFalls(p => [...p, { time_str: new Date().toLocaleTimeString(), impact_g: impactRef.current, outcome: "emergency", response_ms: ms }]);
           fallWaitRef.current = false;
           fallStartRef.current = null;
-          setBanner({ type: "crit", text: "EMERGENCY — No response — Robot dispatched!" });
+          const condText = hostCondition || "an urgent medical condition";
+          setBanner({ type: "crit", text: `EMERGENCY — Host Condition: ${condText} — No response — Robot dispatched!` });
           fetch(API + "/simulate/emergency").catch(() => {});
         }
       });
@@ -327,6 +400,8 @@ function App() {
     : "Following chest sensor · click a person to lock on";
 
   const showConfirm = robotStatus?.awaiting_confirm;
+  const isEmergency = status?.emergency || banner?.type === "crit";
+  const instructions = EMERGENCY_INSTRUCTIONS[hostCondition] || DEFAULT_INSTRUCTIONS;
 
   return (
     <div className="min-h-screen bg-[#090b0f] text-zinc-100">
@@ -346,8 +421,19 @@ function App() {
 
       <div className="mx-auto min-h-screen max-w-6xl px-3 py-3 sm:px-6 sm:py-6">
 
-        <header className="mb-4 px-1 sm:mb-6">
-          <span className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRONHEART</span>
+        <header className="mb-4 px-1 sm:mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRONHEART</span>
+            <span className="micro hidden sm:inline text-zinc-500">· EMERGENCY ROBOT DASHBOARD</span>
+          </div>
+          <button
+            onClick={() => setIsOnboardingOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-line bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-all hover:border-cyan hover:text-cyan"
+            title="Click to view or update host medical condition"
+          >
+            <Terminal size={13} className="text-cyan" />
+            <span>Host: {hostCondition ? hostCondition.split(" (")[0] : "Not Set"}</span>
+          </button>
         </header>
 
         {banner && (
@@ -366,10 +452,24 @@ function App() {
               {TRACES.map((d, i) => <path key={"b"+i} d={d} className="cb-base" />)}
               {TRACES.map((d, i) => <path key={"p"+i} d={d} pathLength="100" className="cb-pulse" />)}
             </svg>
-            <div className="heart-stage">
+            <div className={`heart-stage ${isEmergency ? "opacity-10" : ""} transition-opacity duration-500`}>
               <div className="heart-aura" />
               <img src="/heart.png" alt="" className="heart-art" />
             </div>
+            {isEmergency && (
+              <div className="absolute inset-0 z-10 flex flex-col justify-center p-5 sm:p-8">
+                <div className="micro text-red-400 font-semibold mb-1">EMERGENCY — {hostCondition || "UNKNOWN CONDITION"}</div>
+                <div className="text-sm font-semibold text-zinc-100 mb-3">What to do:</div>
+                <ol className="space-y-2">
+                  {instructions.map((step, i) => (
+                    <li key={i} className="flex gap-2 text-xs text-zinc-300 leading-relaxed">
+                      <span className="shrink-0 text-cyan font-mono">{i + 1}.</span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
           </section>
 
           {/* RIGHT — Camera */}
@@ -473,8 +573,25 @@ function App() {
               <button className="action-button py-2" onClick={connectBLE}>{bleConnected ? "BLE OK" : "CONNECT BLE"}</button>
               <button className="action-button py-2" onClick={toggleWebcam}>{localCamera ? "STOP CAM" : "LOCAL CAM"}</button>
               <button className="action-button py-2" onClick={() => fetch(API + "/simulate/fall").catch(() => {})}>SIM FALL</button>
-              <button className="action-button py-2" onClick={() => fetch(API + "/simulate/emergency").catch(() => {})}>SIM EMERGENCY</button>
-              <button className="action-button py-2" onClick={() => fetch(API + "/simulate/reset").catch(() => {})}>RESET</button>
+              <button
+                className="action-button py-2"
+                onClick={() => {
+                  fetch(API + "/simulate/emergency").catch(() => {});
+                  const condText = hostCondition || "an urgent medical condition";
+                  setBanner({ type: "crit", text: `Emergency — Host Condition: ${condText}` });
+                }}
+              >
+                SIM EMERGENCY
+              </button>
+              <button
+                className="action-button py-2"
+                onClick={() => {
+                  fetch(API + "/simulate/reset").catch(() => {});
+                  setBanner(null);
+                }}
+              >
+                RESET
+              </button>
               <button className="action-button py-2" onClick={toggleSeek} disabled={robotLabel.disabled} style={!robotOnline ? { opacity: 0.4 } : {}} title={robotLabel.text}>
                 {robotStatus && robotStatus.mode !== "follow" ? "RETURN" : "FIND HELP"}
               </button>
@@ -482,6 +599,13 @@ function App() {
           </section>
 
         </main>
+
+        <OnboardingTerminal
+          apiBase={API}
+          isOpen={isOnboardingOpen}
+          onClose={() => setIsOnboardingOpen(false)}
+          onConditionSet={(c) => setHostCondition(c)}
+        />
 
       </div>
     </div>

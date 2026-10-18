@@ -4,12 +4,15 @@ import os
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import json
+import platform
+import subprocess
 import cv2
 import asyncio
 import threading
 import time
 from collections import deque
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_cors import CORS
 from ultralytics import YOLO
 
@@ -18,8 +21,61 @@ try:
 except ModuleNotFoundError:
     from modules.registry import registry
 
-app = Flask(__name__)
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
+app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 CORS(app)
+
+@app.route('/')
+def serve_index():
+    return send_from_directory(FRONTEND_DIR, 'index.html')
+
+@app.route('/<path:path>')
+def serve_static_files(path):
+    if os.path.exists(os.path.join(FRONTEND_DIR, path)):
+        return send_from_directory(FRONTEND_DIR, path)
+    return send_from_directory(FRONTEND_DIR, 'index.html')
+
+# --- Host Medical Profile ---
+HOST_PROFILE_PATH = os.path.join(os.path.dirname(__file__), "host_profile.json")
+host_condition = "Not specified"
+
+def load_host_profile():
+    global host_condition
+    if os.path.exists(HOST_PROFILE_PATH):
+        try:
+            with open(HOST_PROFILE_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                host_condition = data.get("condition") or "Not specified"
+        except Exception as e:
+            print(f"[HostProfile] Error reading profile: {e}")
+
+def save_host_profile(condition):
+    global host_condition
+    host_condition = condition
+    try:
+        with open(HOST_PROFILE_PATH, "w", encoding="utf-8") as f:
+            json.dump({"condition": condition, "updated_at": time.time()}, f, indent=2)
+    except Exception as e:
+        print(f"[HostProfile] Error writing profile: {e}")
+
+load_host_profile()
+
+def speak_emergency(text):
+    """Cross-platform text-to-speech for emergency alert recitation."""
+    def _speak():
+        sys_plat = platform.system()
+        try:
+            if sys_plat == "Darwin":
+                subprocess.run(["say", text], check=False)
+            elif sys_plat == "Linux":
+                subprocess.run(["espeak", text], check=False)
+            elif sys_plat == "Windows":
+                escaped = text.replace("'", "''")
+                ps = f"Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{escaped}')"
+                subprocess.run(["powershell", "-NoProfile", "-Command", ps], check=False)
+        except Exception as e:
+            print(f"[TTS Error] {e}")
+    threading.Thread(target=_speak, daemon=True).start()
 
 # --- BLE config ---
 ARDUINO_NAME = "FallDetector"
@@ -154,7 +210,22 @@ def status():
         'activity_level': activity_level,
         'attached_modules': registry.get_attached(),
         'last_module_log': history[0] if history else None,
+        'host_condition': host_condition,
     })
+
+
+@app.route('/api/host/profile', methods=['GET', 'POST'])
+def host_profile_endpoint():
+    global host_condition
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        cond = (data.get('condition') or '').strip()
+        if cond:
+            save_host_profile(cond)
+            print(f"[HostProfile] Saved condition: {cond}")
+            return jsonify({'success': True, 'condition': host_condition})
+        return jsonify({'success': False, 'error': 'Condition cannot be empty'}), 400
+    return jsonify({'success': True, 'condition': host_condition})
 
 
 @app.route('/modules/available')
@@ -261,7 +332,11 @@ def sim_emergency():
         if attached:
             registry.execute(arm, action='emergency', robot_state={'emergency': True})
 
-    return jsonify({'status': 'emergency'})
+    # Recite host condition aloud
+    msg = f"Emergency detected! Host has collapsed. Host condition is: {host_condition}."
+    speak_emergency(msg)
+
+    return jsonify({'status': 'emergency', 'host_condition': host_condition})
 
 
 @app.route('/simulate/fall')
@@ -358,6 +433,10 @@ def run_ble():
                                 attached = registry._attached.get(arm)
                                 if attached:
                                     registry.execute(arm, action='emergency', robot_state={'emergency': True})
+
+                            # Recite host condition aloud
+                            msg = f"Emergency detected from sensor! Host has fallen. Host condition is: {host_condition}."
+                            speak_emergency(msg)
 
                     def on_gforce(sender, data):
                         raw = int.from_bytes(data[:2], byteorder='little')

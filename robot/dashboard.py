@@ -9,6 +9,7 @@ port 5001, now served by follow_bridge.py itself so one program owns the BLE33 a
   GET  /simulate/emergency  pretend no double-tap came: emergency  (robot goes for help)
   GET  /simulate/reset      pretend the double-tap cancel
   GET  /modules/available|attached|history,  POST /modules/attach|detach|execute   (robot/modules)
+  GET  /api/host/profile    host's medical condition (onboarding terminal); POST {"condition": ...} sets it
 
 The robot's own controls stay on port 5002 (see follow_bridge.start_http).
 """
@@ -20,6 +21,7 @@ from collections import deque
 # robot/modules imports itself as "robot.modules", so the repo root must be importable (as server.py did)
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from robot.modules.registry import registry
+from host_profile import get_host_condition, save_host_condition, speak_emergency
 
 
 class DashboardData:
@@ -68,6 +70,9 @@ class DashboardData:
             self.fall_latched, self.emergency_latched = False, True
             self._log("emergency", now)
             self._trigger_modules("emergency")
+            # Say it out loud, with the host's condition (as robot/server.py did)
+            speak_emergency(f"Emergency detected! Host has fallen. Host condition is: "
+                            f"{get_host_condition('Not specified')}.")
         elif new == 0 and old == 1:
             self.fall_latched = False
             self._log("cancelled", now)
@@ -100,6 +105,7 @@ def status(dash, follower, seeker):
         "activity_level": dash.activity,
         "attached_modules": registry.get_attached(),
         "last_module_log": history[0] if history else None,
+        "host_condition": get_host_condition("Not specified"),
         # robot extras (the new UI's robot panel can use these)
         "robot_mode": seeker.state if seeker and seeker.active else "follow",
         "following": follower.source,
@@ -136,19 +142,28 @@ def handle(handler, dash, follower, seeker, method):
             if dash.backup:
                 dash.backup.cancel()
             return handler._json({"status": "normal"}) or True
+        if path == "/api/host/profile":
+            return handler._json({"success": True, "condition": get_host_condition("Not specified")}) or True
         if path == "/modules/available":
             return handler._json(registry.get_available()) or True
         if path == "/modules/attached":
             return handler._json(registry.get_attached()) or True
         if path == "/modules/history":
             return handler._json(registry.get_history()) or True
-    if method == "POST" and path.startswith("/modules/"):
+    if method == "POST" and (path.startswith("/modules/") or path == "/api/host/profile"):
         import json
         body = handler.rfile.read(int(handler.headers.get("Content-Length", 0)) or 0)
         try:
             data = json.loads(body or b"{}")
         except ValueError:
             data = {}
+        if path == "/api/host/profile":
+            cond = (data.get("condition") or "").strip()
+            if not cond:
+                return handler._json({"success": False, "error": "Condition cannot be empty"}, 400) or True
+            save_host_condition(cond)
+            print(f"[HostProfile] Saved condition: {cond}")
+            return handler._json({"success": True, "condition": cond}) or True
         slot = data.get("slot")
         if not slot:
             return handler._json({"success": False, "error": "Missing slot"}) or True
