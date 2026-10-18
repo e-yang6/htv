@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
-import { Camera, Terminal } from "lucide-react";
 import ModulesTab from "./ModulesTab";
 import OnboardingTerminal from "./OnboardingTerminal";
 import "./styles.css";
@@ -12,34 +11,18 @@ const FALL_CHAR_UUID = "19b10001-e8f2-537e-4f6c-d104768a1214";
 const GFORCE_CHAR_UUID = "19b10002-e8f2-537e-4f6c-d104768a1214";
 const MAX_G_POINTS = 60;
 
-const TRACES = [
-  "M200 150 V0",
-  "M200 150 V90 H55 V0",
-  "M200 150 V90 H135 V0",
-  "M200 150 V100 H290 V0",
-  "M200 150 V100 H350 V50 H400",
-  "M200 150 H310 V70 H400",
-  "M200 150 H400",
-  "M200 150 H310 V230 H400",
-  "M200 150 V300",
-  "M200 150 V210 H110 V300",
-  "M200 150 V210 H300 V300",
-  "M200 150 H90 V60 H0",
-  "M200 150 H0",
-  "M200 150 H90 V245 H0",
-];
 
 function GForceChart({ data, max = 4 }) {
   const w = 280, h = 80, pad = 2;
-  if (!data.length) return <div style={{ height: 80 }} />;
+  if (!data.length) return <svg className="chart" />;
   const pts = data.map((v, i) => {
     const x = pad + (i / Math.max(data.length - 1, 1)) * (w - pad * 2);
     const y = h - pad - (Math.min(v, max) / max) * (h - pad * 2);
     return `${x},${y}`;
   }).join(" ");
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height: 80 }}>
-      <polyline points={pts} fill="none" stroke="#18bff4" strokeWidth="1.5" strokeLinejoin="round" />
+    <svg viewBox={`0 0 ${w} ${h}`} className="chart" preserveAspectRatio="none">
+      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }
@@ -88,12 +71,11 @@ const DEFAULT_INSTRUCTIONS = [
   "Stay with them until help arrives",
 ];
 
-function Stat({ label, value, hint, accent = false }) {
+function Stat({ label, value, hint }) {
   return (
-    <div className="min-w-0">
-      <div className="micro mb-2">{label}</div>
-      <div className={`stat-value ${accent ? "text-cyan" : ""}`}>{value}</div>
-      <div className="micro mt-2 text-zinc-600">{hint}</div>
+    <div>
+      <dt>{label}</dt>
+      <dd className="num">{value}{hint && <small>{hint}</small>}</dd>
     </div>
   );
 }
@@ -403,211 +385,151 @@ function App() {
   const isEmergency = status?.emergency || banner?.type === "crit";
   const instructions = EMERGENCY_INSTRUCTIONS[hostCondition] || DEFAULT_INSTRUCTIONS;
 
-  return (
-    <div className="min-h-screen bg-[#090b0f] text-zinc-100">
+  const wearerState = status?.emergency ? ["crit", "Emergency"]
+    : status?.fall_waiting ? ["warn", "Fall detected"]
+    : backendOnline ? ["ok", "Normal"] : ["none", "No data"];
+  const robotHint = !robotStatus ? null
+    : robotStatus.mode === "follow" ? `${robotStatus.following} · ${robotStatus.follow_state}` : robotStatus.mode;
 
+  return (
+    <div className="app">
       {showConfirm && (
-        <div className="confirm-overlay">
-          <div className="confirm-box">
-            <p className="text-lg font-semibold">Someone nearby has fallen</p>
-            <p className="mt-2 text-sm text-zinc-400">This robot can lead you to them. Will you follow?</p>
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button onClick={rejectRobot} className="confirm-btn">No</button>
-              <button onClick={confirmRobot} className="confirm-btn confirm-yes">Yes, lead me</button>
+        <div className="backdrop">
+          <div className="dialog" role="dialog" aria-modal="true">
+            <h2>Someone nearby has fallen</h2>
+            <p>This robot can lead you to them. Will you follow?</p>
+            <div className="row">
+              <button onClick={rejectRobot} className="btn">No</button>
+              <button onClick={confirmRobot} className="btn btn-primary">Yes, lead me</button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="mx-auto min-h-screen max-w-6xl px-3 py-3 sm:px-6 sm:py-6">
+      <header className="top">
+        <h1>Ironheart</h1>
+        <button className="link" onClick={() => setIsOnboardingOpen(true)} title="View or change the host's medical condition">
+          Host condition: {hostCondition ? hostCondition.split(" (")[0] : "not set"}
+        </button>
+      </header>
 
-        <header className="mb-4 px-1 sm:mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold tracking-[0.22em] sm:text-base">IRONHEART</span>
-            <span className="micro hidden sm:inline text-zinc-500">· EMERGENCY ROBOT DASHBOARD</span>
-          </div>
-          <button
-            onClick={() => setIsOnboardingOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-line bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-all hover:border-cyan hover:text-cyan"
-            title="Click to view or update host medical condition"
-          >
-            <Terminal size={13} className="text-cyan" />
-            <span>Host: {hostCondition ? hostCondition.split(" (")[0] : "Not Set"}</span>
-          </button>
-        </header>
+      {banner && <p className={`alert alert-${banner.type === "crit" ? "crit" : "warn"}`}>{banner.text}</p>}
 
-        {banner && (
-          <div className={`mb-4 rounded-lg px-4 py-3 text-center text-sm ${banner.type === "crit" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-300"}`}>
-            {banner.text}
-          </div>
-        )}
-
-        <main className="grid gap-4 lg:grid-cols-2 lg:gap-5">
-          {/* LEFT — Heart + Circuit Board */}
-          <section className="panel relative flex items-center justify-center p-4 sm:p-5">
-            <svg className="circuit-svg" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice">
-              <defs>
-                <filter id="glow"><feGaussianBlur stdDeviation="3"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-              </defs>
-              {TRACES.map((d, i) => <path key={"b"+i} d={d} className="cb-base" />)}
-              {TRACES.map((d, i) => <path key={"p"+i} d={d} pathLength="100" className="cb-pulse" />)}
-            </svg>
-            <div className={`heart-stage ${isEmergency ? "opacity-10" : ""} transition-opacity duration-500`}>
-              <div className="heart-aura" />
-              <img src="/heart.png" alt="" className="heart-art" />
+      <main className="layout">
+        <section>
+          <div className="wearer">
+            <img src="/heart.png" alt="" className={`heart ${isEmergency ? "alarm" : ""}`} />
+            <div>
+              <h2>Wearer</h2>
+              <p className={`state state-${wearerState[0]}`}>{wearerState[1]}</p>
             </div>
-            {isEmergency && (
-              <div className="absolute inset-0 z-10 flex flex-col justify-center p-5 sm:p-8">
-                <div className="micro text-red-400 font-semibold mb-1">EMERGENCY — {hostCondition || "UNKNOWN CONDITION"}</div>
-                <div className="text-sm font-semibold text-zinc-100 mb-3">What to do:</div>
-                <ol className="space-y-2">
-                  {instructions.map((step, i) => (
-                    <li key={i} className="flex gap-2 text-xs text-zinc-300 leading-relaxed">
-                      <span className="shrink-0 text-cyan font-mono">{i + 1}.</span>
-                      <span>{step}</span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            )}
-          </section>
+          </div>
+          {isEmergency && (
+            <>
+              <h2>What to do — {hostCondition || "unknown condition"}</h2>
+              <ol className="steps">{instructions.map((step, i) => <li key={i}>{step}</li>)}</ol>
+            </>
+          )}
 
-          {/* RIGHT — Camera */}
-          <section className="panel overflow-hidden">
-            <div className="flex border-b border-line">
-              <button onClick={() => setTab("camera")} className={`tab ${tab === "camera" ? "tab-active" : ""}`}><Camera size={14} /> Camera</button>
-              <button onClick={() => setTab("log")} className={`tab ${tab === "log" ? "tab-active" : ""}`}><Terminal size={14} /> Falls</button>
-              <button onClick={() => setTab("modules")} className={`tab ${tab === "modules" ? "tab-active" : ""}`}>Modules</button>
-            </div>
-            {tab === "camera" ? (
-              <div className="relative p-3" style={{ minHeight: 280 }}>
-                {localCamera ? (
-                  <video ref={videoRef} autoPlay playsInline className="h-full w-full object-cover" />
-                ) : videoSrc ? (
-                  <>
-                    <img src={videoSrc} alt="" className="w-full cursor-crosshair" onClick={selectFollow}
-                         onError={() => setFeedError(true)} />
-                    {followLabel && (
-                      <div className="absolute left-5 top-5 rounded bg-black/60 px-2 py-1 text-xs text-zinc-200">{followLabel}</div>
-                    )}
-                    <button onClick={resetRobotCamera} className="absolute right-5 top-5 rounded bg-black/60 px-2 py-1 text-xs text-zinc-300 hover:text-cyan">
-                      Reset camera
-                    </button>
-                  </>
-                ) : (
-                  <div className="flex h-full flex-col items-center justify-center gap-3 py-24 text-zinc-500">
-                    <Camera size={24} /><span className="text-xs">Backend video stream offline</span>
-                  </div>
-                )}
-              </div>
-            ) : tab === "log" ? (
-              <div className="p-4 sm:p-5">
-                <div className="mb-5 flex items-center justify-between">
-                  <p className="text-sm font-medium">Fall history</p>
-                  <span className="micro">{fallCount} events</span>
-                </div>
-                {activeFalls.length === 0 ? (
-                  <div className="rounded-lg border border-line bg-black/20 p-6 text-center">
-                    <div className="text-xs text-zinc-500">No falls detected</div>
-                  </div>
-                ) : (
-                  <div className="space-y-0">
-                    {[...activeFalls].reverse().map((f, i) => (
-                      <div key={i} className="log-row">
-                        <span className="log-time">{f.time_str}</span>
-                        <div className="min-w-0 flex-1">
-                          <div className={`text-sm ${f.outcome === "emergency" ? "text-red-400" : "text-emerald-400"}`}>
-                            {f.outcome === "emergency" ? "Emergency alert" : "Fall cancelled"}
-                          </div>
-                          <div className="micro mt-2">{f.impact_g ? f.impact_g.toFixed(2) + "g" : "—"} · {(f.response_ms / 1000).toFixed(1)}s</div>
-                        </div>
-                        <span className="event-dot" style={f.outcome === "emergency" ? { background: "#ef4444", boxShadow: "0 0 9px rgba(239,68,68,.5)" } : { background: "#26d887", boxShadow: "0 0 9px rgba(38,216,135,.5)" }} />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+          <h2>G-force</h2>
+          <p className="gforce num" style={currentG > 1.5 ? { color: "var(--red)" } : undefined}>{currentG.toFixed(2)} g</p>
+          <GForceChart data={gforceHistory.slice(-MAX_G_POINTS)} />
+
+          <dl className="stats">
+            <Stat label="People in view" value={personCount} />
+            <Stat label="Activity" value={activityLevel} />
+            <Stat label="BLE" value={bleLabel} hint={bleConnected ? "Web BLE" : backendOnline ? "server" : null} />
+            <Stat label="Falls" value={fallCount} />
+            <Stat label="Avg response" value={avgResp} hint="cancelled falls" />
+            <Stat label="Robot" value={robotOnline ? "Online" : "Offline"} hint={robotHint} />
+          </dl>
+        </section>
+
+        <section>
+          <nav className="tabs" role="tablist">
+            {[["camera", "Camera"], ["log", "Falls"], ["modules", "Modules"]].map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>
+            ))}
+          </nav>
+          {tab === "camera" ? (
+            localCamera ? (
+              <figure className="camera"><video ref={videoRef} autoPlay playsInline /></figure>
+            ) : videoSrc ? (
+              <figure className="camera">
+                <img src={videoSrc} alt="Robot camera" onClick={selectFollow} onError={() => setFeedError(true)} />
+                <figcaption>
+                  <span>{followLabel}</span>
+                  <button className="link" onClick={resetRobotCamera}>Reset camera</button>
+                </figcaption>
+              </figure>
             ) : (
-              <ModulesTab
-                backendOnline={backendOnline}
-                apiBase={API}
-                robotState={status}
-                onNotification={(n) => setBanner(n)}
-              />
-            )}
-          </section>
+              <p className="empty">Camera stream offline</p>
+            )
+          ) : tab === "log" ? (
+            activeFalls.length === 0 ? (
+              <p className="empty">No falls detected</p>
+            ) : (
+              <table className="num">
+                <thead><tr><th>Time</th><th>Event</th><th>Impact</th><th>Response</th></tr></thead>
+                <tbody>
+                  {[...activeFalls].reverse().map((f, i) => (
+                    <tr key={i}>
+                      <td>{f.time_str}</td>
+                      <td className={f.outcome === "emergency" ? "event-crit" : "event-ok"}>
+                        {f.outcome === "emergency" ? "Emergency alert" : "Fall cancelled"}
+                      </td>
+                      <td>{f.impact_g ? f.impact_g.toFixed(2) + " g" : "—"}</td>
+                      <td>{(f.response_ms / 1000).toFixed(1)} s</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          ) : (
+            <ModulesTab
+              backendOnline={backendOnline}
+              apiBase={API}
+              robotState={status}
+              onNotification={(n) => setBanner(n)}
+            />
+          )}
+        </section>
+      </main>
 
-          {/* BOTTOM — Stats spanning full width */}
-          <section className="panel p-4 sm:p-5 lg:col-span-2">
-            <div className="flex items-center justify-between border-b border-[#242832] pb-3">
-              <div className="flex items-center gap-3">
-                <div className="flex items-baseline gap-2">
-                  <span className="micro">POWER</span>
-                  <span className="gforce text-cyan">67<span className="text-2xl">%</span></span>
-                </div>
-                <div className="battery-segments">
-                  {Array.from({ length: 20 }, (_, i) => <div key={i} className={`battery-seg ${i < 13 ? "battery-seg-on" : ""}`} />)}
-                </div>
-              </div>
-              <div>
-                <div className="flex items-baseline gap-2 justify-end">
-                  <span className="micro">G-FORCE</span>
-                  <span className="gforce" style={currentG > 1.5 ? { color: "#ef4444" } : {}}>{currentG.toFixed(2)}<span className="text-2xl">g</span></span>
-                </div>
-              </div>
-            </div>
-            <div><GForceChart data={gforceHistory.slice(-MAX_G_POINTS)} /></div>
+      <footer className="controls">
+        <button className="btn btn-primary" onClick={toggleSeek} disabled={robotLabel.disabled} title={robotLabel.text}>
+          {robotStatus && robotStatus.mode !== "follow" ? "Return" : "Find help"}
+        </button>
+        <button className="btn" onClick={() => fetch(API + "/simulate/fall").catch(() => {})}>Simulate fall</button>
+        <button
+          className="btn btn-danger"
+          onClick={() => {
+            fetch(API + "/simulate/emergency").catch(() => {});
+            const condText = hostCondition || "an urgent medical condition";
+            setBanner({ type: "crit", text: `Emergency — Host Condition: ${condText}` });
+          }}
+        >
+          Simulate emergency
+        </button>
+        <button
+          className="btn"
+          onClick={() => {
+            fetch(API + "/simulate/reset").catch(() => {});
+            setBanner(null);
+          }}
+        >
+          Reset
+        </button>
+        <button className="btn" onClick={connectBLE}>{bleConnected ? "BLE connected" : "Connect BLE"}</button>
+        <button className="btn" onClick={toggleWebcam}>{localCamera ? "Stop local camera" : "Local camera"}</button>
+      </footer>
 
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-              <Stat label="PEOPLE" value={String(personCount).padStart(2, "0")} hint="detected" />
-              <Stat label="ACTIVITY" value={activityLevel} hint="level" />
-              <Stat label="BLE" value={bleLabel} hint={bleConnected ? "Web BLE" : backendOnline ? "server" : "—"} accent={bleConnected || status?.ble_connected} />
-              <Stat label="FALLS" value={String(fallCount).padStart(2, "0")} hint="total" accent={fallCount > 0} />
-              <Stat label="AVG RESPONSE" value={avgResp} hint="cancelled" />
-              <Stat label="ROBOT" value={robotOnline ? "Online" : "Offline"}
-                    hint={robotStatus ? (robotStatus.mode === "follow" ? `${robotStatus.following} · ${robotStatus.follow_state}` : robotStatus.mode) : "—"}
-                    accent={robotOnline} />
-            </div>
-
-            <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-6">
-              <button className="action-button py-2" onClick={connectBLE}>{bleConnected ? "BLE OK" : "CONNECT BLE"}</button>
-              <button className="action-button py-2" onClick={toggleWebcam}>{localCamera ? "STOP CAM" : "LOCAL CAM"}</button>
-              <button className="action-button py-2" onClick={() => fetch(API + "/simulate/fall").catch(() => {})}>SIM FALL</button>
-              <button
-                className="action-button py-2"
-                onClick={() => {
-                  fetch(API + "/simulate/emergency").catch(() => {});
-                  const condText = hostCondition || "an urgent medical condition";
-                  setBanner({ type: "crit", text: `Emergency — Host Condition: ${condText}` });
-                }}
-              >
-                SIM EMERGENCY
-              </button>
-              <button
-                className="action-button py-2"
-                onClick={() => {
-                  fetch(API + "/simulate/reset").catch(() => {});
-                  setBanner(null);
-                }}
-              >
-                RESET
-              </button>
-              <button className="action-button py-2" onClick={toggleSeek} disabled={robotLabel.disabled} style={!robotOnline ? { opacity: 0.4 } : {}} title={robotLabel.text}>
-                {robotStatus && robotStatus.mode !== "follow" ? "RETURN" : "FIND HELP"}
-              </button>
-            </div>
-          </section>
-
-        </main>
-
-        <OnboardingTerminal
-          apiBase={API}
-          isOpen={isOnboardingOpen}
-          onClose={() => setIsOnboardingOpen(false)}
-          onConditionSet={(c) => setHostCondition(c)}
-        />
-
-      </div>
+      <OnboardingTerminal
+        apiBase={API}
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+        onConditionSet={(c) => setHostCondition(c)}
+      />
     </div>
   );
 }

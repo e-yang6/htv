@@ -85,77 +85,33 @@ export default function OnboardingTerminal({ apiBase = "http://localhost:5001", 
   if (!isOpen) return null;
 
   return (
-    <div
-      className={`fixed inset-0 z-[100] flex items-center justify-center p-4 transition-all duration-700 ${
-        fadingOut ? "opacity-0 backdrop-blur-none pointer-events-none scale-95" : "opacity-100 backdrop-blur-md"
-      }`}
-      style={{
-        background: "rgba(0, 0, 0, 0.88)",
-      }}
-    >
-      <div
-        className="w-full max-w-xl overflow-hidden rounded-lg border border-zinc-800 bg-black font-mono text-zinc-100 shadow-2xl"
-        role="dialog"
-        aria-modal="true"
-      >
-        {/* Minimal Terminal Header: Just inactive aesthetic dots, no skip/close */}
-        <div className="flex items-center gap-2 border-b border-zinc-900 bg-zinc-950/60 px-4 py-2.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-700/60" />
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-800/60" />
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-800/60" />
+    <div className="backdrop" style={fadingOut ? { opacity: 0, transition: "opacity .3s" } : undefined}>
+      <form className="dialog" role="dialog" aria-modal="true" onSubmit={handleSubmit}>
+        <h2>Host's medical condition</h2>
+        <p>Shown to helpers and read out by the robot in an emergency.</p>
+        <input
+          ref={inputRef}
+          type="text"
+          value={condition}
+          onChange={(e) => setCondition(e.target.value)}
+          disabled={isSubmitting}
+          placeholder="e.g. Type 1 Diabetes"
+          autoComplete="off"
+          autoFocus
+          required
+        />
+        <div className="presets">
+          {[
+            "Severe Peanut Allergy",
+            "Type 1 Diabetes",
+            "Severe Asthma",
+            "Cardiac History / Pacemaker Alert",
+          ].map((chip) => (
+            <button key={chip} type="button" onClick={() => fillChip(chip)} className="btn">{chip}</button>
+          ))}
         </div>
-
-        {/* Terminal Body */}
-        <div className="p-6">
-          <div className="mb-4 text-xs text-zinc-400">
-            enter primary condition:
-          </div>
-
-          {/* Input Form with blinking / symbol */}
-          <form onSubmit={handleSubmit} className="flex items-center gap-2">
-            <span className="animate-pulse select-none text-base font-bold text-zinc-300">/</span>
-            <input
-              ref={inputRef}
-              type="text"
-              value={condition}
-              onChange={(e) => setCondition(e.target.value)}
-              disabled={isSubmitting}
-              className="flex-1 bg-transparent text-sm text-zinc-100 outline-none caret-zinc-400"
-              autoComplete="off"
-              autoFocus
-              required
-            />
-            {condition.trim() && (
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
-              >
-                ↵
-              </button>
-            )}
-          </form>
-
-          {/* Quick select */}
-          <div className="mt-8 flex flex-wrap items-center gap-2 pt-4 border-t border-zinc-900">
-            {[
-              "Severe Peanut Allergy",
-              "Type 1 Diabetes",
-              "Severe Asthma",
-              "Cardiac History / Pacemaker Alert",
-            ].map((chip, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => fillChip(chip)}
-                className="rounded border border-zinc-800 bg-zinc-950 px-2.5 py-1 text-xs text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-300"
-              >
-                {chip}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+        <button type="submit" disabled={isSubmitting || !condition.trim()} className="btn btn-primary">Save</button>
+      </form>
     </div>
   );
 }
