@@ -46,7 +46,8 @@ SCAN_MAX_DEG = 360        # ...until we've looked all the way round
 
 # --- Fall response ---
 LYING_ASPECT = 1.3        # box this many times wider than tall (and not cut off at the top) = lying down
-WAVE_S = 5.0              # on arrival, wave the arms this long, then lead them back to the fallen wearer
+WAVE_S = 5.0              # (no-confirm path) wave this long on arrival, then lead them back. During a fall
+                          # rescue it waves the whole time the dashboard asks "will you help?" instead
 WAVE_PERIOD_S = 0.6
 
 REJECT_TURN_DEG = 90      # bystander rejected: turn this far away before looking for someone else
@@ -450,9 +451,12 @@ class Seeker:
         return self.state.startswith("returning")
 
     def confirm(self):
+        """They said yes: arms down and lead them back (they've been waved at during the question)."""
         if self.state == "arrived" and not self.confirmed:
             self.confirmed = True
-            self.arrived_at = time.monotonic()
+            self.arm_cmd = b"p"
+            self._wave_phase = None
+            self.go_home()
 
     def reject(self):
         """Bystander said no: let go of this person and turn away before looking for someone else
@@ -462,6 +466,8 @@ class Seeker:
             self.last_seen = now
             self.scanned = 0.0
             self.vision.locked = None
+            self.arm_cmd = b"p"   # stop waving at them
+            self._wave_phase = None
             self.state = "scanning"
             self._turn(REJECT_TURN_DEG, now)
 
@@ -504,6 +510,8 @@ class Seeker:
             return self._seek(now)
         if self.state == "arrived":
             if self.emergency and not self.confirmed:
+                # Asking "will you help?" on the dashboard: wave the whole time to get their attention
+                self._wave_arms(now - self.arrived_at, float("inf"))
                 return (0, 0)
             if self.emergency:
                 return self._wave(now)
