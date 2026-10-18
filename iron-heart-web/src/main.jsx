@@ -399,7 +399,24 @@ function App() {
     : robotStatus.following === "person" ? "Following clicked person"
     : "Following chest sensor · click a person to lock on";
 
-  const showConfirm = robotStatus?.awaiting_confirm;
+  // Test button: show the "will you help?" screen (with its voice clips) without the robot
+  const [testConfirm, setTestConfirm] = useState(false);
+  const startTestConfirm = () => {
+    setTestConfirm(true);
+    ownerFellAudio.current.currentTime = 0;
+    ownerFellAudio.current.play().catch(() => {});
+    ownerFellAudio.current.onended = () => setTimeout(() => {
+      willingAudio.current.currentTime = 0;
+      willingAudio.current.play().catch(() => {});
+    }, 800);
+  };
+  const endTestConfirm = () => {
+    setTestConfirm(false);
+    ownerFellAudio.current.onended = null;
+    ownerFellAudio.current.pause();
+    willingAudio.current.pause();
+  };
+  const showConfirm = robotStatus?.awaiting_confirm || testConfirm;
   const isEmergency = status?.emergency || banner?.type === "crit";
   const instructions = EMERGENCY_INSTRUCTIONS[hostCondition] || DEFAULT_INSTRUCTIONS;
 
@@ -407,14 +424,14 @@ function App() {
     <div className="min-h-screen bg-[#090b0f] text-zinc-100">
 
       {showConfirm && (
-        <div className="confirm-overlay">
-          <div className="confirm-box">
-            <p className="text-lg font-semibold">Someone nearby has fallen</p>
-            <p className="mt-2 text-sm text-zinc-400">This robot can lead you to them. Will you follow?</p>
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button onClick={rejectRobot} className="confirm-btn">No</button>
-              <button onClick={confirmRobot} className="confirm-btn confirm-yes">Yes, lead me</button>
-            </div>
+        <div className="confirm-screen" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+          <p className="confirm-tag">{testConfirm ? "TEST — " : ""}EMERGENCY</p>
+          <h1 id="confirm-title" className="confirm-title">Someone nearby has fallen</h1>
+          <p className="confirm-condition">They have {hostCondition || "an urgent medical condition"}</p>
+          <p className="confirm-question">This robot can lead you to them. Will you follow?</p>
+          <div className="confirm-actions">
+            <button onClick={testConfirm ? endTestConfirm : confirmRobot} className="confirm-btn confirm-yes">YES, LEAD ME</button>
+            <button onClick={testConfirm ? endTestConfirm : rejectRobot} className="confirm-btn">No</button>
           </div>
         </div>
       )}
@@ -569,7 +586,7 @@ function App() {
                     accent={robotOnline} />
             </div>
 
-            <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-6">
+            <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-7">
               <button className="action-button py-2" onClick={connectBLE}>{bleConnected ? "BLE OK" : "CONNECT BLE"}</button>
               <button className="action-button py-2" onClick={toggleWebcam}>{localCamera ? "STOP CAM" : "LOCAL CAM"}</button>
               <button className="action-button py-2" onClick={() => fetch(API + "/simulate/fall").catch(() => {})}>SIM FALL</button>
@@ -595,6 +612,7 @@ function App() {
               <button className="action-button py-2" onClick={toggleSeek} disabled={robotLabel.disabled} style={!robotOnline ? { opacity: 0.4 } : {}} title={robotLabel.text}>
                 {robotStatus && robotStatus.mode !== "follow" ? "RETURN" : "FIND HELP"}
               </button>
+              <button className="action-button py-2" onClick={startTestConfirm} title="Preview the screen a bystander sees when the robot reaches them">TEST HELP</button>
             </div>
           </section>
 
