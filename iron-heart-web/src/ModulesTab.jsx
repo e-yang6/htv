@@ -129,82 +129,68 @@ export default function ModulesTab({ backendOnline, apiBase, robotState, onNotif
         />
       </div>
 
-      {/* Module tray */}
-      <div>
-        <div className="flex items-center justify-between">
-          <span className="micro">AVAILABLE MODULES</span>
-          <button onClick={() => setShowAdd(!showAdd)} className="micro text-cyan hover:text-white transition-colors">
-            {showAdd ? "CANCEL" : "+ ADD"}
+      <header className="flex items-center justify-between">
+        <h2 className="micro">AVAILABLE MODULES</h2>
+        <button onClick={() => setShowAdd(!showAdd)} className="micro text-cyan hover:text-white">
+          {showAdd ? "CANCEL" : "+ ADD"}
+        </button>
+      </header>
+
+      {showAdd && (
+        <form className="border border-[#242832] bg-[#0f1117] p-3" onSubmit={e => { e.preventDefault(); addCustomModule(); }}>
+          <input
+            type="text"
+            placeholder="Module name"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            className="mb-2 w-full border-b border-zinc-700 bg-transparent pb-2 text-xs text-zinc-200 outline-none"
+            autoFocus
+          />
+          <input
+            type="text"
+            placeholder="Description (optional)"
+            value={newDesc}
+            onChange={e => setNewDesc(e.target.value)}
+            className="mb-3 w-full border-b border-zinc-700 bg-transparent pb-2 text-xs text-zinc-400 outline-none"
+          />
+          <button type="submit" disabled={!newName.trim()} className="action-button w-full py-1.5 text-[10px]"
+                  style={!newName.trim() ? { opacity: 0.4 } : {}}>
+            ADD MODULE
           </button>
-        </div>
+        </form>
+      )}
 
-        {showAdd && (
-          <div className="mt-2 rounded-lg border border-[#242832] bg-[#0f1117] p-3">
-            <input
-              type="text"
-              placeholder="Module name"
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              className="w-full bg-transparent text-xs text-zinc-200 outline-none border-b border-zinc-700 pb-2 mb-2"
-              autoFocus
-            />
-            <input
-              type="text"
-              placeholder="Description (optional)"
-              value={newDesc}
-              onChange={e => setNewDesc(e.target.value)}
-              className="w-full bg-transparent text-xs text-zinc-400 outline-none border-b border-zinc-700 pb-2 mb-3"
-            />
-            <button
-              onClick={addCustomModule}
-              disabled={!newName.trim()}
-              className="action-button w-full py-1.5 text-[10px]"
-              style={!newName.trim() ? { opacity: 0.4 } : {}}
+      <ul className="grid grid-cols-1 gap-2">
+        {allModules.map(mod => {
+          const slotLabel = attached.left_arm === mod.id ? "Left" : attached.right_arm === mod.id ? "Right" : null;
+          const isCustom = mod.id.startsWith("custom_");
+          return (
+            <li
+              key={mod.id}
+              draggable
+              onDragStart={e => onDragStart(e, mod.id)}
+              className={`flex flex-wrap items-center gap-x-3 gap-y-2 border bg-[#0f1117] px-3 py-2.5 cursor-grab active:cursor-grabbing ${
+                draggedId === mod.id ? "border-cyan-500/40 opacity-50" : "border-[#242832] hover:border-zinc-600"
+              }`}
             >
-              ADD MODULE
-            </button>
-          </div>
-        )}
-
-        <div className="mt-2 grid grid-cols-1 gap-2">
-          {allModules.map(mod => {
-            const onLeft = attached.left_arm === mod.id;
-            const onRight = attached.right_arm === mod.id;
-            const slotLabel = onLeft ? "Left" : onRight ? "Right" : null;
-            const isCustom = mod.id.startsWith("custom_");
-            return (
-              <div
-                key={mod.id}
-                draggable
-                onDragStart={e => onDragStart(e, mod.id)}
-                className={`rounded-lg border bg-[#0f1117] px-3 py-2.5 cursor-grab active:cursor-grabbing transition-all ${
-                  draggedId === mod.id ? "border-cyan-500/40 opacity-50" : "border-[#242832] hover:border-zinc-600"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium text-zinc-200">{mod.name}</div>
-                    <div className="micro mt-1 text-zinc-500">{mod.description}</div>
-                  </div>
-                  <div className="flex items-center gap-2 ml-2 shrink-0">
-                    {slotLabel && <span className="micro text-cyan">{slotLabel}</span>}
-                    {isCustom && (
-                      <button onClick={() => removeCustomModule(mod.id)} className="micro text-zinc-600 hover:text-red-400 transition-colors">✕</button>
-                    )}
-                  </div>
-                </div>
-                {/* Tap-to-attach buttons for mobile */}
-                {!slotLabel && (
-                  <div className="mt-2 grid grid-cols-2 gap-2 sm:hidden">
-                    <button onClick={() => attachModule("left_arm", mod.id)} className="action-button py-1.5 text-[9px]">LEFT ARM</button>
-                    <button onClick={() => attachModule("right_arm", mod.id)} className="action-button py-1.5 text-[9px]">RIGHT ARM</button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+              <p className="min-w-0 flex-1 text-xs font-medium text-zinc-200">
+                {mod.name}
+                <small className="micro mt-1 block font-normal text-zinc-500">{mod.description}</small>
+              </p>
+              {slotLabel ? <span className="micro text-cyan">{slotLabel}</span> : (
+                <>
+                  {/* Tap-to-attach for touch screens (no drag and drop) */}
+                  <button onClick={() => attachModule("left_arm", mod.id)} className="action-button px-3 py-1.5 text-[9px] sm:hidden">LEFT ARM</button>
+                  <button onClick={() => attachModule("right_arm", mod.id)} className="action-button px-3 py-1.5 text-[9px] sm:hidden">RIGHT ARM</button>
+                </>
+              )}
+              {isCustom && (
+                <button onClick={() => removeCustomModule(mod.id)} className="micro text-zinc-600 hover:text-red-400" title="Remove this module">✕</button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -218,7 +204,7 @@ function ArmSlot({ label, slot, moduleId, allModules, dragOver, onDragOver, onDr
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      className={`rounded-lg border p-3 transition-all min-h-[100px] flex flex-col ${
+      className={`border p-3 min-h-[100px] flex flex-col ${
         dragOver
           ? "border-cyan-500/50 bg-cyan-950/20"
           : mod
@@ -226,22 +212,13 @@ function ArmSlot({ label, slot, moduleId, allModules, dragOver, onDragOver, onDr
           : "border-dashed border-zinc-700/50 bg-black/20"
       }`}
     >
-      <div className="flex items-center justify-between mb-2">
+      <header className="mb-2 flex items-center justify-between">
         <span className="micro font-semibold text-zinc-300">{label.toUpperCase()}</span>
-        {mod && (
-          <button onClick={onDetach} className="micro text-zinc-500 hover:text-red-400 transition-colors">DETACH</button>
-        )}
-      </div>
-
-      {mod ? (
-        <div className="flex-1 flex items-center">
-          <div className="text-xs font-medium text-zinc-200">{mod.name}</div>
-        </div>
-      ) : (
-        <div className="flex-1 flex items-center justify-center">
-          <span className="text-[10px] text-zinc-500">Drag module here</span>
-        </div>
-      )}
+        {mod && <button onClick={onDetach} className="micro text-zinc-500 hover:text-red-400">DETACH</button>}
+      </header>
+      {mod
+        ? <strong className="text-xs font-medium text-zinc-200">{mod.name}</strong>
+        : <span className="m-auto text-[10px] text-zinc-500">Drag module here</span>}
     </div>
   );
 }

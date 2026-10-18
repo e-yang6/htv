@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
-import { Camera, Terminal } from "lucide-react";
 import ModulesTab from "./ModulesTab";
 import OnboardingTerminal from "./OnboardingTerminal";
 import "./styles.css";
@@ -91,9 +90,8 @@ const DEFAULT_INSTRUCTIONS = [
 function Stat({ label, value, hint, accent = false }) {
   return (
     <div className="min-w-0">
-      <div className="micro mb-2">{label}</div>
-      <div className={`stat-value ${accent ? "text-cyan" : ""}`}>{value}</div>
-      <div className="micro mt-2 text-zinc-600">{hint}</div>
+      <dt className="micro mb-2">{label}</dt>
+      <dd className={`stat-value ${accent ? "text-cyan" : ""}`}>{value}{hint && <small className="micro mt-2 block text-zinc-600">{hint}</small>}</dd>
     </div>
   );
 }
@@ -111,6 +109,16 @@ function App() {
       return "";
     }
   });
+  // For a condition typed in by hand during onboarding: its description and the helper's steps
+  const [hostProfile, setHostProfile] = useState(() => {
+    try {
+      return { description: "", steps: [], ...JSON.parse(localStorage.getItem("ironheart_host_profile") || "{}") };
+    } catch {
+      return { description: "", steps: [] };
+    }
+  });
+  // Full-screen "what to do" page, shown once the bystander says yes
+  const [showInstructions, setShowInstructions] = useState(false);
 
 
   const [backendOnline, setBackendOnline] = useState(false);
@@ -150,6 +158,20 @@ function App() {
 
   useEffect(() => {
     emergencyAudio.current.loop = true;
+    // Browsers only allow sound after the page has been clicked/tapped once: on the first click,
+    // play-and-pause each clip so later alerts (with nobody touching the page) can play
+    const unlock = () => {
+      for (const a of [emergencyAudio, ownerFellAudio, willingAudio]) {
+        a.current.muted = true;
+        a.current.play().then(() => { a.current.pause(); a.current.muted = false; a.current.currentTime = 0; })
+          .catch(() => { a.current.muted = false; });
+      }
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => { window.removeEventListener("pointerdown", unlock); window.removeEventListener("keydown", unlock); };
   }, []);
 
   useEffect(() => {
@@ -157,12 +179,12 @@ function App() {
     const prev = lastRobotMode.current;
     lastRobotMode.current = mode;
 
+    // Looking for a person to bring back: loop the call for help the whole time (re-tried on every
+    // status update, so it starts even if an earlier play() was blocked)
     if (mode === "seeking" || mode === "scanning") {
       arrivalPlayed.current = false;
-      if (prev !== "seeking" && prev !== "scanning") {
-        emergencyAudio.current.currentTime = 0;
-        emergencyAudio.current.play().catch(() => {});
-      }
+      if (prev !== "seeking" && prev !== "scanning") emergencyAudio.current.currentTime = 0;
+      if (emergencyAudio.current.paused) emergencyAudio.current.play().catch(() => {});
     } else {
       emergencyAudio.current.pause();
     }
@@ -346,10 +368,21 @@ function App() {
     catch {}
   }, []);
 
+  // Click-to-follow: click a person in the robot camera feed to lock on; click empty space to clear
+  const selectFollow = useCallback(async (e) => {
+    const img = e.currentTarget;
+    const rect = img.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width, y = (e.clientY - rect.top) / rect.height;
+    try { setRobotStatus(await fetch(`${ROBOT}/select?x=${x.toFixed(3)}&y=${y.toFixed(3)}`, { method: "POST" }).then(r => r.json())); }
+    catch {}
+  }, []);
+
+  const resetRobotCamera = useCallback(() => {
+    fetch(ROBOT + "/camera-reset", { method: "POST" }).catch(() => {});
+  }, []);
+
   const activeFalls = bleConnected ? localFalls : falls;
   const fallCount = activeFalls.length;
-  const cancelled = activeFalls.filter(x => x.outcome === "cancelled");
-  const avgResp = cancelled.length ? (cancelled.reduce((a, x) => a + x.response_ms, 0) / cancelled.length / 1000).toFixed(1) + "s" : "—";
   const bleLabel = bleConnected ? "Connected" : bleConnecting ? "Scanning..." : status?.ble_connected ? "Server BLE" : "Off";
   const videoSrc = localCamera ? null : backendOnline ? API + "/video" : robotOnline ? ROBOT + "/video" : null;
 
@@ -359,23 +392,62 @@ function App() {
     return { text: m[robotStatus.mode] || robotStatus.mode, disabled: robotStatus.mode === "follow" && !robotStatus.camera };
   })();
 
-  const showConfirm = robotStatus?.awaiting_confirm;
+  // What follow mode is steering by (sticker on your pants > clicked person > chest-sensor gyro)
+  const followLabel = !robotStatus ? null
+    : robotStatus.following === "sticker" ? "Following sticker"
+    : robotStatus.following === "person" ? "Following clicked person"
+    : "Following chest sensor · click a person to lock on";
+
+  // Test button: show the "will you help?" screen (with its voice clips) without the robot
+  const [testConfirm, setTestConfirm] = useState(false);
+  const startTestConfirm = () => {
+    setTestConfirm(true);
+    ownerFellAudio.current.currentTime = 0;
+    ownerFellAudio.current.play().catch(() => {});
+    ownerFellAudio.current.onended = () => setTimeout(() => {
+      willingAudio.current.currentTime = 0;
+      willingAudio.current.play().catch(() => {});
+    }, 800);
+  };
+  const endTestConfirm = () => {
+    setTestConfirm(false);
+    ownerFellAudio.current.onended = null;
+    ownerFellAudio.current.pause();
+    willingAudio.current.pause();
+  };
+  const showConfirm = robotStatus?.awaiting_confirm || testConfirm;
   const isEmergency = status?.emergency || banner?.type === "crit";
-  const instructions = EMERGENCY_INSTRUCTIONS[hostCondition] || DEFAULT_INSTRUCTIONS;
+  const instructions = EMERGENCY_INSTRUCTIONS[hostCondition]
+    || (hostProfile.steps?.length ? hostProfile.steps : DEFAULT_INSTRUCTIONS);
 
   return (
     <div className="min-h-screen bg-[#090b0f] text-zinc-100">
 
       {showConfirm && (
-        <div className="confirm-overlay">
-          <div className="confirm-box">
-            <p className="text-lg font-semibold">Someone nearby has fallen</p>
-            <p className="mt-2 text-sm text-zinc-400">This robot can lead you to them. Will you follow?</p>
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button onClick={rejectRobot} className="confirm-btn">No</button>
-              <button onClick={confirmRobot} className="confirm-btn confirm-yes">Yes, lead me</button>
-            </div>
+        <div className="confirm-screen" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+          <p className="confirm-tag">{testConfirm ? "TEST — " : ""}EMERGENCY</p>
+          <h1 id="confirm-title" className="confirm-title">Someone nearby has fallen</h1>
+          <p className="confirm-condition">They have {hostCondition || "an urgent medical condition"}</p>
+          <p className="confirm-question">This robot can lead you to them. Will you follow?</p>
+          <div className="confirm-actions">
+            <button onClick={() => { (testConfirm ? endTestConfirm : confirmRobot)(); setShowInstructions(true); }} className="confirm-btn confirm-yes">YES, LEAD ME</button>
+            <button onClick={testConfirm ? endTestConfirm : rejectRobot} className="confirm-btn">No</button>
           </div>
+        </div>
+      )}
+
+      {showInstructions && !showConfirm && (
+        <div className="instr-screen" role="dialog" aria-modal="true" aria-labelledby="instr-title">
+          <p className="instr-tag">FOLLOW THE ROBOT — IT WILL TAKE YOU TO THEM</p>
+          <h1 id="instr-title" className="instr-title">What to do when you get there</h1>
+          <p className="instr-condition">They have {hostCondition || "an urgent medical condition"}</p>
+          {hostProfile.description && !EMERGENCY_INSTRUCTIONS[hostCondition] && (
+            <p className="instr-description">{hostProfile.description}</p>
+          )}
+          <ol className="instr-steps">
+            {instructions.map((step, i) => <li key={i}>{step}</li>)}
+          </ol>
+          <button className="instr-close" onClick={() => setShowInstructions(false)}>Close</button>
         </div>
       )}
 
@@ -392,9 +464,7 @@ function App() {
         </header>
 
         {banner && (
-          <div className={`mb-4 rounded-lg px-4 py-3 text-center text-sm ${banner.type === "crit" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-300"}`}>
-            {banner.text}
-          </div>
+          <p className={`banner ${banner.type === "crit" ? "banner-crit" : "banner-warn"}`}>{banner.text}</p>
         )}
 
         <main className="grid gap-4 lg:grid-cols-2 lg:gap-5">
@@ -429,50 +499,48 @@ function App() {
 
           {/* RIGHT — Camera */}
           <section className="panel overflow-hidden">
-            <div className="flex border-b border-line">
-              <button onClick={() => setTab("camera")} className={`tab ${tab === "camera" ? "tab-active" : ""}`}><Camera size={14} /> Camera</button>
-              <button onClick={() => setTab("log")} className={`tab ${tab === "log" ? "tab-active" : ""}`}><Terminal size={14} /> Falls</button>
-              <button onClick={() => setTab("modules")} className={`tab ${tab === "modules" ? "tab-active" : ""}`}>Modules</button>
-            </div>
+            <nav className="flex border-b border-line">
+              {[["camera", "Camera"], ["log", "Falls"], ["modules", "Modules"]].map(([id, label]) => (
+                <button key={id} onClick={() => setTab(id)} className={`tab ${tab === id ? "tab-active" : ""}`}>{label}</button>
+              ))}
+            </nav>
             {tab === "camera" ? (
-              <div className="relative p-3" style={{ minHeight: 280 }}>
+              <figure className="m-0 p-3">
                 {localCamera ? (
-                  <video ref={videoRef} autoPlay playsInline className="h-full w-full object-cover" />
+                  <video ref={videoRef} autoPlay playsInline className="w-full" />
                 ) : videoSrc ? (
-                  <img src={videoSrc} alt="" className="w-full" onError={() => setFeedError(true)} />
+                  <>
+                    <img src={videoSrc} alt="Robot camera" className="w-full cursor-crosshair" onClick={selectFollow}
+                         onError={() => setFeedError(true)} />
+                    <figcaption className="feed-caption">
+                      <span>{followLabel}</span>
+                      <button onClick={resetRobotCamera} className="hover:text-cyan">Reset camera</button>
+                    </figcaption>
+                  </>
                 ) : (
-                  <div className="flex h-full flex-col items-center justify-center gap-3 py-24 text-zinc-500">
-                    <Camera size={24} /><span className="text-xs">Backend video stream offline</span>
-                  </div>
+                  <figcaption className="py-24 text-center text-xs text-zinc-500">Backend video stream offline</figcaption>
                 )}
-              </div>
+              </figure>
             ) : tab === "log" ? (
-              <div className="p-4 sm:p-5">
-                <div className="mb-5 flex items-center justify-between">
-                  <p className="text-sm font-medium">Fall history</p>
-                  <span className="micro">{fallCount} events</span>
-                </div>
-                {activeFalls.length === 0 ? (
-                  <div className="rounded-lg border border-line bg-black/20 p-6 text-center">
-                    <div className="text-xs text-zinc-500">No falls detected</div>
-                  </div>
-                ) : (
-                  <div className="space-y-0">
+              activeFalls.length === 0 ? (
+                <p className="p-6 text-center text-xs text-zinc-500">No falls detected</p>
+              ) : (
+                <table className="fall-log">
+                  <thead><tr><th>Time</th><th>Event</th><th>Impact</th><th>Response</th></tr></thead>
+                  <tbody>
                     {[...activeFalls].reverse().map((f, i) => (
-                      <div key={i} className="log-row">
-                        <span className="log-time">{f.time_str}</span>
-                        <div className="min-w-0 flex-1">
-                          <div className={`text-sm ${f.outcome === "emergency" ? "text-red-400" : "text-emerald-400"}`}>
-                            {f.outcome === "emergency" ? "Emergency alert" : "Fall cancelled"}
-                          </div>
-                          <div className="micro mt-2">{f.impact_g ? f.impact_g.toFixed(2) + "g" : "—"} · {(f.response_ms / 1000).toFixed(1)}s</div>
-                        </div>
-                        <span className="event-dot" style={f.outcome === "emergency" ? { background: "#ef4444", boxShadow: "0 0 9px rgba(239,68,68,.5)" } : { background: "#26d887", boxShadow: "0 0 9px rgba(38,216,135,.5)" }} />
-                      </div>
+                      <tr key={i}>
+                        <td>{f.time_str}</td>
+                        <td className={f.outcome === "emergency" ? "text-red-400" : "text-emerald-400"}>
+                          {f.outcome === "emergency" ? "Emergency alert" : "Fall cancelled"}
+                        </td>
+                        <td>{f.impact_g ? f.impact_g.toFixed(2) + "g" : "—"}</td>
+                        <td>{(f.response_ms / 1000).toFixed(1)}s</td>
+                      </tr>
                     ))}
-                  </div>
-                )}
-              </div>
+                  </tbody>
+                </table>
+              )
             ) : (
               <ModulesTab
                 backendOnline={backendOnline}
@@ -485,35 +553,19 @@ function App() {
 
           {/* BOTTOM — Stats spanning full width */}
           <section className="panel p-4 sm:p-5 lg:col-span-2">
-            <div className="flex items-center justify-between border-b border-[#242832] pb-3">
-              <div className="flex items-center gap-3">
-                <div className="flex items-baseline gap-2">
-                  <span className="micro">POWER</span>
-                  <span className="gforce text-cyan">67<span className="text-2xl">%</span></span>
-                </div>
-                <div className="battery-segments">
-                  {Array.from({ length: 20 }, (_, i) => <div key={i} className={`battery-seg ${i < 13 ? "battery-seg-on" : ""}`} />)}
-                </div>
-              </div>
+            <dl className="grid grid-cols-3 gap-3 border-b border-[#242832] pb-3">
               <div>
-                <div className="flex items-baseline gap-2 justify-end">
-                  <span className="micro">G-FORCE</span>
-                  <span className="gforce" style={currentG > 1.5 ? { color: "#ef4444" } : {}}>{currentG.toFixed(2)}<span className="text-2xl">g</span></span>
-                </div>
+                <dt className="micro">G-FORCE</dt>
+                <dd className="gforce" style={currentG > 1.5 ? { color: "#ef4444" } : {}}>{currentG.toFixed(2)}<span className="text-2xl">g</span></dd>
               </div>
-            </div>
-            <div><GForceChart data={gforceHistory.slice(-MAX_G_POINTS)} /></div>
+              <Stat label="BLE" value={bleLabel} hint={bleConnected ? "Web BLE" : backendOnline ? "server" : null} accent={bleConnected || status?.ble_connected} />
+              <Stat label="ROBOT" value={robotOnline ? "Online" : "Offline"}
+                    hint={robotStatus ? (robotStatus.mode === "follow" ? `${robotStatus.following} · ${robotStatus.follow_state}` : robotStatus.mode) : null}
+                    accent={robotOnline} />
+            </dl>
+            <GForceChart data={gforceHistory.slice(-MAX_G_POINTS)} />
 
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-              <Stat label="PEOPLE" value={String(personCount).padStart(2, "0")} hint="detected" />
-              <Stat label="ACTIVITY" value={activityLevel} hint="level" />
-              <Stat label="BLE" value={bleLabel} hint={bleConnected ? "Web BLE" : backendOnline ? "server" : "—"} accent={bleConnected || status?.ble_connected} />
-              <Stat label="FALLS" value={String(fallCount).padStart(2, "0")} hint="total" accent={fallCount > 0} />
-              <Stat label="AVG RESPONSE" value={avgResp} hint="cancelled" />
-              <Stat label="ROBOT" value={robotOnline ? "Online" : "Offline"} hint={robotStatus?.mode || "—"} accent={robotOnline} />
-            </div>
-
-            <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-6">
+            <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-7">
               <button className="action-button py-2" onClick={connectBLE}>{bleConnected ? "BLE OK" : "CONNECT BLE"}</button>
               <button className="action-button py-2" onClick={toggleWebcam}>{localCamera ? "STOP CAM" : "LOCAL CAM"}</button>
               <button className="action-button py-2" onClick={() => fetch(API + "/simulate/fall").catch(() => {})}>SIM FALL</button>
@@ -536,7 +588,10 @@ function App() {
               >
                 RESET
               </button>
-              <button className="action-button py-2" onClick={toggleSeek} disabled={robotLabel.disabled} style={!robotOnline ? { opacity: 0.4 } : {}}>ROBOT</button>
+              <button className="action-button py-2" onClick={toggleSeek} disabled={robotLabel.disabled} style={!robotOnline ? { opacity: 0.4 } : {}} title={robotLabel.text}>
+                {robotStatus && robotStatus.mode !== "follow" ? "RETURN" : "FIND HELP"}
+              </button>
+              <button className="action-button py-2" onClick={startTestConfirm} title="Preview the screen a bystander sees when the robot reaches them">TEST HELP</button>
             </div>
           </section>
 
@@ -546,7 +601,7 @@ function App() {
           apiBase={API}
           isOpen={isOnboardingOpen}
           onClose={() => setIsOnboardingOpen(false)}
-          onConditionSet={(c) => setHostCondition(c)}
+          onConditionSet={(c, profile) => { setHostCondition(c); if (profile) setHostProfile(profile); }}
         />
 
       </div>

@@ -38,23 +38,28 @@ def serve_static_files(path):
 # --- Host Medical Profile ---
 HOST_PROFILE_PATH = os.path.join(os.path.dirname(__file__), "host_profile.json")
 host_condition = "Not specified"
+host_description = ""     # for a condition typed in by hand: what it is...
+host_steps = []           # ...and what a helper should do
 
 def load_host_profile():
-    global host_condition
+    global host_condition, host_description, host_steps
     if os.path.exists(HOST_PROFILE_PATH):
         try:
             with open(HOST_PROFILE_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 host_condition = data.get("condition") or "Not specified"
+                host_description = data.get("description") or ""
+                host_steps = data.get("steps") or []
         except Exception as e:
             print(f"[HostProfile] Error reading profile: {e}")
 
-def save_host_profile(condition):
-    global host_condition
-    host_condition = condition
+def save_host_profile(condition, description="", steps=None):
+    global host_condition, host_description, host_steps
+    host_condition, host_description, host_steps = condition, description, steps or []
     try:
         with open(HOST_PROFILE_PATH, "w", encoding="utf-8") as f:
-            json.dump({"condition": condition, "updated_at": time.time()}, f, indent=2)
+            json.dump({"condition": condition, "description": description, "steps": host_steps,
+                       "updated_at": time.time()}, f, indent=2)
     except Exception as e:
         print(f"[HostProfile] Error writing profile: {e}")
 
@@ -222,11 +227,14 @@ def host_profile_endpoint():
         data = request.get_json(silent=True) or {}
         cond = (data.get('condition') or '').strip()
         if cond:
-            save_host_profile(cond)
+            steps = [str(s).strip() for s in data.get('steps') or [] if str(s).strip()]
+            save_host_profile(cond, (data.get('description') or '').strip(), steps)
             print(f"[HostProfile] Saved condition: {cond}")
-            return jsonify({'success': True, 'condition': host_condition})
+            return jsonify({'success': True, 'condition': host_condition,
+                            'description': host_description, 'steps': host_steps})
         return jsonify({'success': False, 'error': 'Condition cannot be empty'}), 400
-    return jsonify({'success': True, 'condition': host_condition})
+    return jsonify({'success': True, 'condition': host_condition,
+                    'description': host_description, 'steps': host_steps})
 
 
 @app.route('/modules/available')
