@@ -234,6 +234,19 @@ function App() {
     catch {}
   }, []);
 
+  // Click-to-follow: click a person in the robot camera feed to lock on; click empty space to clear
+  const selectFollow = useCallback(async (e) => {
+    const img = e.currentTarget;
+    const rect = img.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width, y = (e.clientY - rect.top) / rect.height;
+    try { setRobotStatus(await fetch(`${ROBOT}/select?x=${x.toFixed(3)}&y=${y.toFixed(3)}`, { method: "POST" }).then(r => r.json())); }
+    catch {}
+  }, []);
+
+  const resetRobotCamera = useCallback(() => {
+    fetch(ROBOT + "/camera-reset", { method: "POST" }).catch(() => {});
+  }, []);
+
   const activeFalls = bleConnected ? localFalls : falls;
   const fallCount = activeFalls.length;
   const cancelled = activeFalls.filter(x => x.outcome === "cancelled");
@@ -246,6 +259,12 @@ function App() {
     const m = { follow: "Go to nearest person", seeking: "Heading to person", scanning: "Looking for person", arrived: "Arrived — return", returning: "Returning..." };
     return { text: m[robotStatus.mode] || robotStatus.mode, disabled: robotStatus.mode === "follow" && !robotStatus.camera };
   })();
+
+  // What follow mode is steering by (sticker on your pants > clicked person > chest-sensor gyro)
+  const followLabel = !robotStatus ? null
+    : robotStatus.following === "sticker" ? "Following sticker"
+    : robotStatus.following === "person" ? "Following clicked person"
+    : "Following chest sensor · click a person to lock on";
 
   const showConfirm = robotStatus?.awaiting_confirm;
 
@@ -321,7 +340,16 @@ function App() {
                 {localCamera ? (
                   <video ref={videoRef} autoPlay playsInline className="h-full w-full object-cover" />
                 ) : videoSrc ? (
-                  <img src={videoSrc} alt="" className="w-full" onError={() => setFeedError(true)} />
+                  <>
+                    <img src={videoSrc} alt="" className="w-full cursor-crosshair" onClick={selectFollow}
+                         onError={() => setFeedError(true)} />
+                    {followLabel && (
+                      <div className="absolute left-5 top-5 rounded bg-black/60 px-2 py-1 text-xs text-zinc-200">{followLabel}</div>
+                    )}
+                    <button onClick={resetRobotCamera} className="absolute right-5 top-5 rounded bg-black/60 px-2 py-1 text-xs text-zinc-300 hover:text-cyan">
+                      Reset camera
+                    </button>
+                  </>
                 ) : (
                   <div className="flex h-full flex-col items-center justify-center gap-3 py-24 text-zinc-500">
                     <Camera size={24} /><span className="text-xs">Backend video stream offline</span>
@@ -392,7 +420,9 @@ function App() {
               <Stat label="BLE" value={bleLabel} hint={bleConnected ? "Web BLE" : backendOnline ? "server" : "—"} accent={bleConnected || status?.ble_connected} />
               <Stat label="FALLS" value={String(fallCount).padStart(2, "0")} hint="total" accent={fallCount > 0} />
               <Stat label="AVG RESPONSE" value={avgResp} hint="cancelled" />
-              <Stat label="ROBOT" value={robotOnline ? "Online" : "Offline"} hint={robotStatus?.mode || "—"} accent={robotOnline} />
+              <Stat label="ROBOT" value={robotOnline ? "Online" : "Offline"}
+                    hint={robotStatus ? (robotStatus.mode === "follow" ? `${robotStatus.following} · ${robotStatus.follow_state}` : robotStatus.mode) : "—"}
+                    accent={robotOnline} />
             </div>
 
             <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
@@ -401,7 +431,9 @@ function App() {
               <button className="action-button py-2" onClick={() => fetch(API + "/simulate/fall").catch(() => {})}>SIM FALL</button>
               <button className="action-button py-2" onClick={() => fetch(API + "/simulate/emergency").catch(() => {})}>SIM EMERGENCY</button>
               <button className="action-button py-2" onClick={() => fetch(API + "/simulate/reset").catch(() => {})}>RESET</button>
-              <button className="action-button py-2" onClick={toggleSeek} disabled={robotLabel.disabled} style={!robotOnline ? { opacity: 0.4 } : {}}>ROBOT</button>
+              <button className="action-button py-2" onClick={toggleSeek} disabled={robotLabel.disabled} style={!robotOnline ? { opacity: 0.4 } : {}} title={robotLabel.text}>
+                {robotStatus && robotStatus.mode !== "follow" ? "ROBOT: RETURN" : "ROBOT: FIND HELP"}
+              </button>
               <button className={`action-button py-2 col-span-2 sm:col-span-1 ${tab === "modules" ? "border-cyan-400 text-cyan bg-cyan-950/30" : ""}`} onClick={() => setTab("modules")}>MODULES</button>
             </div>
           </section>
