@@ -8,55 +8,44 @@
 export const MODULE_DEFINITIONS = [
   {
     id: "epipen",
-    name: "EpiPen Auto-Injector",
+    name: "EpiPen Carrier",
     color: "#ef4444",
     accentBg: "rgba(239, 68, 68, 0.12)",
     borderColor: "rgba(239, 68, 68, 0.35)",
     glowColor: "rgba(239, 68, 68, 0.25)",
     iconName: "Syringe",
-    description: "Emergency epinephrine auto-injector designed to counteract acute anaphylaxis and severe allergic shock.",
+    description: "Carries an EpiPen so the robot can bring it to someone having an allergic reaction.",
     supportedSlots: ["left_arm", "right_arm"],
     actions: [
       {
         id: "trigger",
-        label: "Administer Injection",
+        label: "Deliver EpiPen",
         type: "primary",
-        description: "Disengages safety lock and executes solenoid needle extension.",
-        handler: async ({ slot, robotState }) => {
-          return {
-            status: "executed",
-            action: "trigger",
-            safetyLock: false,
-            deliveredDose: "0.3mg Epinephrine",
-            message: `EpiPen actuated on ${slot === "left_arm" ? "Left Arm" : "Right Arm"}. Safety lock released, dose delivered.`
-          };
+        description: "Extends the arm to hand off the EpiPen.",
+        handler: async ({ slot }) => {
+          return { status: "delivered", action: "trigger", message: `EpiPen delivered via ${slot === "left_arm" ? "Left Arm" : "Right Arm"}.` };
         }
       }
     ]
   },
   {
     id: "medicine",
-    name: "Medicine Bottle Dispenser",
+    name: "Medicine Carrier",
     color: "#10b981",
     accentBg: "rgba(16, 185, 129, 0.12)",
     borderColor: "rgba(16, 185, 129, 0.35)",
     glowColor: "rgba(16, 185, 129, 0.25)",
     iconName: "Pill",
-    description: "Smart medication dispenser with automated dosage release, blister feed, and patient hand-off.",
+    description: "Holds a medicine bottle so the robot can deliver medication to someone who needs it.",
     supportedSlots: ["left_arm", "right_arm"],
     actions: [
       {
         id: "dispense",
-        label: "Dispense Single Dose",
+        label: "Deliver Medicine",
         type: "primary",
-        description: "Rotates carousel and drops prescribed dosage into hopper / hand-off tray.",
-        handler: async ({ slot, robotState }) => {
-          return {
-            status: "dispensed",
-            action: "dispense",
-            doseId: "DOSE-" + Math.floor(1000 + Math.random() * 9000),
-            message: `Medication dose dispensed via ${slot === "left_arm" ? "Left Arm" : "Right Arm"}.`
-          };
+        description: "Extends the arm to hand off the medicine bottle.",
+        handler: async ({ slot }) => {
+          return { status: "delivered", action: "dispense", message: `Medicine delivered via ${slot === "left_arm" ? "Left Arm" : "Right Arm"}.` };
         }
       }
     ]
