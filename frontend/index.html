@@ -406,6 +406,18 @@
       gap: 8px;
       z-index: 5;
     }
+    /* --- Robot (follow_bridge.py on port 5002): click-to-follow + bystander confirmation --- */
+    #feed { cursor: crosshair; }
+    .confirm-overlay { position: fixed; inset: 0; background: rgba(12, 35, 64, 0.45); display: none;
+                       align-items: center; justify-content: center; z-index: 1000; }
+    .confirm-overlay.show { display: flex; }
+    .confirm-box { background: var(--bg-card); border: 1px solid var(--glass-border); border-radius: 12px;
+                   padding: 24px 28px; max-width: 380px; text-align: center; color: var(--text-main);
+                   box-shadow: 0 12px 40px rgba(12, 35, 64, 0.25); }
+    .confirm-box h3 { margin: 0 0 8px; font-size: 18px; }
+    .confirm-box p { margin: 0 0 18px; color: var(--text-secondary); font-size: 14px; }
+    .confirm-box .btn { margin: 0 6px; }
+
     .feed-badge {
       font-size: 13px;
       font-weight: 600;
@@ -1014,16 +1026,21 @@
             Robot Camera Feed
             <span class="card-subtitle">YOLOv8 Person Detection</span>
           </div>
-          <button class="btn" onclick="toggleWebcam()">Toggle Camera</button>
+          <div>
+            <button class="btn" id="robotSeekBtn" onclick="robotSeek()" disabled>Go to nearest person</button>
+            <button class="btn" onclick="robotPost('/camera-reset')">Reset camera</button>
+            <button class="btn" onclick="toggleWebcam()">Toggle Camera</button>
+          </div>
         </div>
 
         <div class="feed-container">
           <div class="feed-overlay-top">
             <div class="feed-badge"><span class="dot"></span> Live Stream</div>
             <div class="feed-badge" id="camPersonBadge" style="display:none;">Person Detected</div>
+            <div class="feed-badge" id="followBadge">Click a person to follow them</div>
           </div>
 
-          <img id="feed" src="http://localhost:5001/video" alt="" onerror="onFeedError()">
+          <img id="feed" src="http://localhost:5001/video" alt="" onerror="onFeedError()" onclick="selectFollow(event)">
           <video id="webcam" autoplay playsinline style="display:none;"></video>
 
           <div class="feed-fallback" id="camFallback">
@@ -1037,6 +1054,9 @@
         <div class="feed-status-bar">
           <div class="feed-status-text">
             Navigation Target: <b id="targetText">Searching for Person</b>
+          </div>
+          <div class="feed-status-text">
+            Following: <b id="followText">-</b>
           </div>
           <div class="feed-status-text">
             People in View: <b id="mPpl">0</b>
@@ -1895,6 +1915,60 @@
 
     // Initialize arms overview
     updateMainArmOverview();
+  </script>
+  <!-- Bystander confirmation: the robot reached someone during a fall rescue -->
+  <div class="confirm-overlay" id="confirmOverlay">
+    <div class="confirm-box">
+      <h3>Someone has fallen nearby</h3>
+      <p>The robot is asking you to come and help. Will you follow it back to them?</p>
+      <button class="btn" onclick="robotPost('/reject')">No</button>
+      <button class="btn btn-primary" onclick="robotPost('/confirm')">Yes, lead me</button>
+    </div>
+  </div>
+
+  <script>
+    // --- Robot controls (robot/follow_bridge.py, port 5002) ---
+    // The dashboard data above comes from the same program on port 5001.
+    const ROBOT = 'http://localhost:5002';
+    const FOLLOW_LABELS = { sticker: 'Sticker on your pants', person: 'Clicked person', gyro: 'Chest sensor (gyro)' };
+
+    function robotPost(path) {
+      return fetch(ROBOT + path, { method: 'POST' }).then(r => r.json()).then(showRobot).catch(() => {});
+    }
+    function robotSeek() { robotPost('/seek'); }
+
+    // Click a person in the camera feed to follow them; click empty space to clear
+    function selectFollow(ev) {
+      const img = ev.currentTarget;
+      const x = ev.offsetX / img.clientWidth, y = ev.offsetY / img.clientHeight;
+      robotPost(`/select?x=${x.toFixed(3)}&y=${y.toFixed(3)}`);
+    }
+
+    function showRobot(s) {
+      const btn = document.getElementById('robotSeekBtn');
+      const badge = document.getElementById('followBadge');
+      const text = document.getElementById('followText');
+      if (!s) {
+        btn.disabled = true; btn.textContent = 'Robot offline';
+        text.textContent = 'Robot offline';
+        return;
+      }
+      btn.disabled = !s.camera;
+      btn.textContent = s.mode === 'follow' ? 'Go to nearest person'
+                      : s.mode && s.mode.startsWith('returning') ? 'Returning (cancel)' : 'Return to start';
+      const following = FOLLOW_LABELS[s.following] || s.following || '-';
+      text.textContent = s.mode === 'follow' ? `${following} (${s.follow_state})` : s.mode;
+      badge.textContent = s.following === 'person' ? 'Following clicked person'
+                        : s.following === 'sticker' ? 'Following sticker' : 'Click a person to follow them';
+      document.getElementById('confirmOverlay').classList.toggle('show', !!s.awaiting_confirm);
+    }
+
+    async function robotTick() {
+      try { showRobot(await fetch(ROBOT + '/status').then(r => r.json())); }
+      catch (e) { showRobot(null); }
+    }
+    setInterval(robotTick, 500);
+    robotTick();
   </script>
 </body>
 </html>

@@ -9,7 +9,6 @@ start point, one straight drive, one turn back to the original heading. Position
 dead-reckoned from the motor commands, so it is only as good as the turn rate:
 run follow_bridge.py --calibrate-turn once to measure it with the camera.
 """
-import json
 import math
 import os
 import threading
@@ -18,16 +17,18 @@ import time
 import cv2
 import numpy as np
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-TURN_RATE_FILE = os.path.join(HERE, "turn_rate.json")
+from calibration import HERE, TURN_RATE_FILE, save_calibration
 
 # --- Camera ---
 CAMERA_FOV_DEG = 60.0     # horizontal field of view of the chest camera (rough is fine)
-MIN_CONF = 0.25           # low on purpose: feet-only views score low
+MIN_CONF = 0.25           # low on purpose: feet-only views score low (enough to keep tracking a locked target)
+PICK_CONF = 0.45          # but picking a NEW target needs a confident detection
+PICK_MIN_AREA = 0.01      # and one that isn't tiny / far away / a reflection
+LOCK_IOU = 0.2            # a detection overlapping the locked target this much = same person
+LOCK_MAX_JUMP = 0.25      # ...or its centre moved less than this share of the frame width
+LOCK_LOST_S = 1.5         # locked person unseen this long = pick someone new
 FRAME_W, FRAME_H = 640, 480
 CAMERA_LAG_S = 0.25       # frames this much newer than a move show where the robot ended up
-FLOW_W, FLOW_H = 160, 120 # frame size for measuring how far the view slides (= how much we turned)
-FLOW_MIN_RESPONSE = 0.05  # phase-correlation confidence below this = can't tell, fall back to timing
 
 # --- Approach ---
 CENTER_TOL = 0.4          # person within the middle 40% either side = keep driving straight (no fiddly re-aims)
@@ -47,7 +48,17 @@ LYING_ASPECT = 1.3        # box this many times wider than tall (and not cut off
 WAVE_S = 5.0              # on arrival, wave the arms this long, then lead them back to the fallen wearer
 WAVE_PERIOD_S = 0.6
 
+REJECT_TURN_DEG = 90      # bystander rejected: turn this far away before looking for someone else
+
 # --- Return ---
+# Going back means going back to the wearer. Timing alone gets the direction badly wrong after a
+# search (lots of short turns), so as soon as the camera sees the wearer - their sticker, someone
+# lying down, or the clicked person - it steers straight at them instead.
+HOME_STICKER_SIZE = 0.18  # sticker this tall (share of frame) = back next to the wearer
+HOME_LYING_AREA = 0.25    # someone lying down filling this much of the frame = back
+HOME_PERSON_SIZE = 0.6    # clicked person this tall = back
+RETURN_CAM_TOL = 0.3      # wearer within this of centre = drive straight at them
+HOME_SCAN_DEG = 360       # timing says we're home but no wearer in view: look round this far
 RETURN_TURN_TOL = 6       # deg off the way home before driving
 RETURN_DRIFT_TOL = 12     # deg the robot may drift while driving before it stops to correct
 RETURN_CHUNK_S = 0.5      # bearing is re-checked this often while driving home (no stop)
@@ -58,57 +69,48 @@ def wrap(deg):
     return (deg + 180) % 360 - 180
 
 
-def save_calibration(**values):
-    """Merge values into turn_rate.json."""
-    try:
-        with open(TURN_RATE_FILE) as f:
-            cal = json.load(f)
-    except (OSError, ValueError):
-        cal = {}
-    cal.update(values)
-    with open(TURN_RATE_FILE, "w") as f:
-        json.dump(cal, f)
-
-
-def load_speed(default_mps):
-    try:
-        with open(TURN_RATE_FILE) as f:
-            return float(json.load(f)["speed_mps"])
-    except (OSError, ValueError, KeyError):
-        return default_mps
-
-
-def load_calibration(default_rate):
-    """(turn rate deg/s, degrees per pixel of view slide or None) from --calibrate-turn."""
-    try:
-        with open(TURN_RATE_FILE) as f:
-            cal = json.load(f)
-        return float(cal["turn_rate_dps"]), cal.get("deg_per_px")
-    except (OSError, ValueError, KeyError):
-        return default_rate, None
+def box_iou(a, b):
+    """Overlap of two (x1, y1, x2, y2) boxes, 0-1."""
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
 
 
 class Vision:
     """Robot camera. A fast thread reads frames and measures how far the view slides sideways
     (= how much the robot turned); a second thread runs YOLO on the newest frame."""
 
-    def __init__(self, camera_index, deg_per_px=None):
+    def __init__(self, camera_index):
         from ultralytics import YOLO
         self.model = YOLO(os.path.join(HERE, "yolov8n.pt"))
         self.camera_index = camera_index
-        self.deg_per_px = deg_per_px  # from --calibrate-turn; None = no visual heading
         self.lock = threading.Lock()
         self.target = None        # dict(cx=-1..1, area=0..1, bottom=0..1, conf, t)
         self.people = 0
         self.jpeg = None
         self.frame = None         # (time, newest BGR frame)
         self.small = None         # (time, tiny grey frame) for turn calibration
-        self.yaw_px = 0.0         # total sideways slide of the view, + = view moved right = robot turned left
-        self.bad_flow = 0         # frame pairs where the slide couldn't be measured
         self.overlay = ""         # status text drawn on the feed
         self.ok = False
         self.detect = True        # False = skip YOLO (calibration wants the CPU)
+        self.reopen = False       # set True to reset the camera (POST /camera-reset)
+        self.patch = None         # (time, latest sticker sighting or None), see patch_tracker.py
+        # Click-to-follow: the person clicked on the dashboard, tracked frame to frame
+        self.click = None         # (x, y) 0-1 in the frame, waiting to be matched to a person
+        self.follow_box = None    # (x1, y1, x2, y2 as 0-1, time last seen)
+        self.follow_hit = None    # (time, dict(cx, size, sel)) latest sighting
+        self.follow_sel = 0       # +1 per click, so the follower knows to re-measure its distance
+        self.lying_hit = None     # (time, biggest person lying down) - the fallen wearer, for going home
+        self.patch_tracker = None
+        import follow_config as fcfg
+        if fcfg.PATCH_TRACKING:
+            from patch_tracker import PatchTracker
+            self.patch_tracker = PatchTracker(os.path.join(HERE, fcfg.PATCH_IMAGE))
         self.exclude_lying = False  # True = never pick someone lying down (the fallen wearer)
+        self.lock_on = False      # True while seeking: stick with one person instead of re-picking every frame
+        self.locked = None        # (box normalised x1, y1, x2, y2, time last seen)
         threading.Thread(target=self._capture, daemon=True).start()
         threading.Thread(target=self._detect, daemon=True).start()
 
@@ -121,30 +123,32 @@ class Vision:
             return
         print(f"Camera {self.camera_index} running")
         self.ok = True
-        prev = None
-        window = None
+        fails = 0
         while True:
+            if self.reopen:
+                # Reset the camera (e.g. Continuity Camera dropped): close and open it again
+                self.reopen = False
+                cap.release()
+                time.sleep(1.0)
+                cap = cv2.VideoCapture(self.camera_index)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_W)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_H)
+                print(f"Camera {self.camera_index} reopened" if cap.isOpened() else "Camera reopen failed")
             ok, frame = cap.read()
             if not ok:
+                fails += 1
+                if fails == 40:   # ~2 s without frames: try reopening by itself
+                    self.reopen, fails = True, 0
                 time.sleep(0.05)
                 continue
+            fails = 0
             now = time.monotonic()
             grey = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            flow = cv2.resize(grey, (FLOW_W, FLOW_H)).astype(np.float32)
-            if window is None:
-                window = cv2.createHanningWindow((FLOW_W, FLOW_H), cv2.CV_32F)
-            dx, good = 0.0, False
-            if prev is not None:
-                (dx, _dy), response = cv2.phaseCorrelate(prev, flow, window)
-                good = response >= FLOW_MIN_RESPONSE and abs(dx) < FLOW_W / 3
-            prev = flow
+            hit = self.patch_tracker.find(frame) if self.patch_tracker else None
             with self.lock:
                 self.frame = (now, frame)
                 self.small = (now, cv2.resize(grey, (64, 48)).astype(np.float32))
-                if good:
-                    self.yaw_px += dx
-                elif prev is not None:
-                    self.bad_flow += 1
+                self.patch = (now, hit)
 
     def _detect(self):
         last = 0.0
@@ -157,46 +161,175 @@ class Vision:
             last, frame = f[0], f[1].copy()
             h, w = frame.shape[:2]
             results = self.model(frame, classes=[0], conf=MIN_CONF, verbose=False)
-            best, best_score, people = None, -1, 0
+            people, candidates, lying_people = 0, [], []
             for r in results:
                 for box in r.boxes:
                     people += 1
                     x1, y1, x2, y2 = box.xyxy[0].tolist()
+                    conf = float(box.conf[0])
                     area = (x2 - x1) * (y2 - y1) / (w * h)
                     # Wide box that isn't cut off at the top = lying down. A standing person seen
                     # from this low camera is cut off at the top (only legs/feet in view).
                     lying = (x2 - x1) > LYING_ASPECT * (y2 - y1) and y1 > 0.02 * h
                     colour = (0, 200, 255) if lying else (0, 200, 0)
                     cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), colour, 2)
+                    cv2.putText(frame, f"{'lying ' if lying else ''}{conf:.0%}", (int(x1), int(y1) - 6),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 2)
+                    cand = dict(
+                        cx=((x1 + x2) / 2 - w / 2) / (w / 2), area=area, bottom=y2 / h, conf=conf,
+                        box=(int(x1), int(y1), int(x2), int(y2)),
+                        norm=(x1 / w, y1 / h, x2 / w, y2 / h))
                     if lying:
-                        cv2.putText(frame, "lying", (int(x1), int(y1) - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 2)
+                        lying_people.append(cand)
                         if self.exclude_lying:
                             continue
-                    # Nearest = biggest box, nudged toward whoever is already in front of us
-                    cx = ((x1 + x2) / 2 - w / 2) / (w / 2)
-                    score = area * (1 - 0.3 * abs(cx))
-                    if score > best_score:
-                        best_score = score
-                        best = dict(cx=cx, area=area, bottom=y2 / h, conf=float(box.conf[0]),
-                                    box=(int(x1), int(y1), int(x2), int(y2)))
+                    candidates.append(cand)
+            self._track_followed(candidates, last)
+            best = self._choose(candidates, last)
             if best:
                 x1, y1, x2, y2 = best["box"]
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
+                cv2.putText(frame, "TARGET", (x1, max(14, y1 - 22)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
                 best["t"] = last   # time the frame was taken, not when YOLO finished
+            if self.patch_tracker and self.patch:
+                self.patch_tracker.draw(frame, self.patch[1])
+            if self.follow_box and self.follow_hit and self.follow_hit[0] == last:
+                fx1, fy1, fx2, fy2, _ = self.follow_box
+                p1, p2 = (int(fx1 * w), int(fy1 * h)), (int(fx2 * w), int(fy2 * h))
+                cv2.rectangle(frame, p1, p2, (255, 255, 0), 3)
+                cv2.putText(frame, "FOLLOW", (p1[0], max(14, p1[1] - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
             cv2.line(frame, (w // 2, 0), (w // 2, h), (255, 255, 255), 1)
             cv2.rectangle(frame, (0, 0), (w, 30), (0, 0, 0), -1)
             cv2.putText(frame, self.overlay, (8, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
             _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             with self.lock:
-                if best:
-                    self.target = best
+                self.target = best          # None when nobody suitable is in view (no stale targets)
+                biggest = max(lying_people, key=lambda c: c["area"]) if lying_people else None
+                self.lying_hit = (last, biggest) if biggest else self.lying_hit
                 self.people = people
                 self.jpeg = jpg.tobytes()
 
-    def yaw_reading(self):
-        """(total slide in px, count of unmeasurable frame pairs)."""
+    def _choose(self, candidates, t):
+        """Pick who to go to. Locked on: the same person as last time. Otherwise: the closest one."""
+        if self.lock_on and self.locked and t - self.locked[4] < LOCK_LOST_S:
+            lx1, ly1, lx2, ly2, _ = self.locked
+            lcx = (lx1 + lx2) / 2
+
+            def iou(n):
+                ix = max(0.0, min(lx2, n[2]) - max(lx1, n[0]))
+                iy = max(0.0, min(ly2, n[3]) - max(ly1, n[1]))
+                inter = ix * iy
+                union = (lx2 - lx1) * (ly2 - ly1) + (n[2] - n[0]) * (n[3] - n[1]) - inter
+                return inter / union if union > 0 else 0.0
+
+            same = [(iou(c["norm"]), c) for c in candidates
+                    if iou(c["norm"]) >= LOCK_IOU or abs((c["norm"][0] + c["norm"][2]) / 2 - lcx) < LOCK_MAX_JUMP]
+            if same:
+                best = max(same, key=lambda x: x[0])[1]
+                self.locked = (*best["norm"], t)
+                return best
+            return None   # locked person not visible this frame: wait for them rather than switch
+        # Closest = biggest box whose feet are lowest in the frame (nearer = lower from a low camera)
+        pickable = [c for c in candidates if c["conf"] >= PICK_CONF and c["area"] >= PICK_MIN_AREA]
+        if self.exclude_lying:
+            pickable = [c for c in pickable if not self._is_wearer(c)]   # never "rescue" the fallen wearer
+        if not pickable:
+            return None
+        best = max(pickable, key=lambda c: c["area"] * (0.5 + c["bottom"]) * (1 - 0.2 * abs(c["cx"])))
+        if self.lock_on:
+            self.locked = (*best["norm"], t)
+            print(f"Camera: locked onto a person ({best['conf']:.0%} sure, {best['area']:.0%} of frame)")
+        return best
+
+    def select(self, x, y):
+        """Dashboard click at (x, y), 0-1 across/down the video: follow the person there.
+        Clicking empty space clears the selection."""
+        self.click = (x, y)
+
+    def _track_followed(self, candidates, t):
+        """Keep the clicked person locked: same matching as the go-to-person lock (overlap, or a small
+        move), so it doesn't jump to someone else."""
+        import follow_config as fcfg
+        if self.click:
+            x, y = self.click
+            self.click = None
+            inside = [c for c in candidates if c["norm"][0] <= x <= c["norm"][2] and c["norm"][1] <= y <= c["norm"][3]]
+            if inside:
+                c = min(inside, key=lambda c: (c["norm"][2] - c["norm"][0]) * (c["norm"][3] - c["norm"][1]))
+                self.follow_box = (*c["norm"], t)
+                self.follow_sel += 1
+                print(f"Click: following the person at ({x:.2f}, {y:.2f})")
+            else:
+                self.follow_box = None
+                print("Click: nobody there, follow selection cleared")
+        if not self.follow_box:
+            return
+        lx1, ly1, lx2, ly2, seen = self.follow_box
+        if t - seen > fcfg.PERSON_LOST_S:
+            print("Followed person lost (click them again)")
+            self.follow_box = None
+            return
+
+        def iou(n):
+            ix = max(0.0, min(lx2, n[2]) - max(lx1, n[0]))
+            iy = max(0.0, min(ly2, n[3]) - max(ly1, n[1]))
+            inter = ix * iy
+            union = (lx2 - lx1) * (ly2 - ly1) + (n[2] - n[0]) * (n[3] - n[1]) - inter
+            return inter / union if union > 0 else 0.0
+
+        lcx = (lx1 + lx2) / 2
+        same = [(iou(c["norm"]), c) for c in candidates
+                if iou(c["norm"]) >= LOCK_IOU or abs((c["norm"][0] + c["norm"][2]) / 2 - lcx) < LOCK_MAX_JUMP]
+        if same:
+            c = max(same, key=lambda x: x[0])[1]
+            self.follow_box = (*c["norm"], t)
+            with self.lock:
+                self.follow_hit = (t, dict(cx=c["cx"], size=c["norm"][3] - c["norm"][1], sel=self.follow_sel))
+
+    def followed(self, max_age):
+        """Latest sighting of the clicked person if recent enough, else None."""
         with self.lock:
-            return self.yaw_px, self.bad_flow
+            f = self.follow_hit
+        if self.follow_box and f and time.monotonic() - f[0] <= max_age:
+            return f[1]
+        return None
+
+    def sticker(self, max_age):
+        """Latest sticker sighting if recent enough, else None."""
+        with self.lock:
+            p = self.patch
+        if p and p[1] and time.monotonic() - p[0] <= max_age:
+            return p[1]
+        return None
+
+    def _is_wearer(self, c):
+        """Is this detection the wearer? Their box overlaps the clicked/followed person, or contains the sticker."""
+        if self.follow_box and box_iou(c["norm"], self.follow_box[:4]) > 0.2:
+            return True
+        p = self.patch[1] if self.patch else None
+        if p and self.frame is not None:
+            fh, fw = self.frame[1].shape[:2]
+            sx, sy = (p["box"][0] + p["box"][2]) / 2 / fw, (p["box"][1] + p["box"][3]) / 2 / fh
+            x1, y1, x2, y2 = c["norm"]
+            if x1 <= sx <= x2 and y1 <= sy <= y2:
+                return True
+        return False
+
+    def wearer(self, max_age):
+        """Where the wearer is, for going back to them: their sticker, else someone lying down, else
+        the clicked person. Returns dict(cx, size, kind) or None."""
+        now = time.monotonic()
+        st = self.sticker(max_age)
+        if st:
+            return dict(cx=st["cx"], size=st["size"], kind="sticker")
+        lh = self.lying_hit
+        if lh and now - lh[0] <= max_age:
+            x1, y1, x2, y2 = lh[1]["norm"]
+            return dict(cx=lh[1]["cx"], size=y2 - y1, area=lh[1]["area"], kind="lying")
+        fp = self.followed(max_age)
+        if fp:
+            return dict(cx=fp["cx"], size=fp["size"], kind="person")
+        return None
 
     def latest(self, max_age):
         with self.lock:
@@ -221,6 +354,8 @@ class Seeker:
         self.scanned = 0.0
         self.last_seen = 0.0
         self.driving_home = False
+        self.home_scanned = 0.0
+        self.rate_left = self.rate_right = turn_rate_dps   # per direction; the bridge sets the measured ones
         self.emergency = False    # started by a fall rather than the button
         self.confirmed = False    # True once the frontend confirms "lead this person back"
         self.arrived_at = 0.0
@@ -231,6 +366,8 @@ class Seeker:
         self.emergency = emergency
         self.confirmed = False
         self.vision.exclude_lying = emergency
+        self.vision.locked = None
+        self.vision.lock_on = True
         self.x = self.y = 0.0
         self.origin_heading = heading
         self.scanned = 0.0
@@ -241,6 +378,7 @@ class Seeker:
     def go_home(self):
         self.action = None
         self.driving_home = False
+        self.home_scanned = 0.0
         self.state = "returning"
 
     def cancel(self):
@@ -249,6 +387,18 @@ class Seeker:
         self.emergency = False
         self.confirmed = False
         self.vision.exclude_lying = False
+        self.vision.lock_on = False
+        self.vision.locked = None
+
+    @property
+    def awaiting_confirm(self):
+        """Reached someone during a fall rescue; waiting for them to confirm on the dashboard."""
+        return self.state == "arrived" and self.emergency and not self.confirmed
+
+    @property
+    def returning(self):
+        """On the way back (display state varies: 'returning (sticker)', 'looking for wearer', ...)."""
+        return self.state.startswith("returning") or self.state == "looking for wearer"
 
     def confirm(self):
         if self.state == "arrived" and not self.confirmed:
@@ -256,10 +406,15 @@ class Seeker:
             self.arrived_at = time.monotonic()
 
     def reject(self):
+        """Bystander said no: let go of this person and turn away before looking for someone else
+        (otherwise it would lock straight back onto the same person)."""
         if self.state == "arrived" and not self.confirmed:
-            self.last_seen = time.monotonic()
+            now = time.monotonic()
+            self.last_seen = now
             self.scanned = 0.0
-            self.state = "seeking"
+            self.vision.locked = None
+            self.state = "scanning"
+            self._turn(REJECT_TURN_DEG, now)
 
     @property
     def active(self):
@@ -280,7 +435,7 @@ class Seeker:
 
     def _turn(self, deg, now, max_s=None):
         """One turn pulse of deg (+ = left), followed by a short settle."""
-        s = abs(deg) / self.turn_rate
+        s = abs(deg) / (self.rate_left if deg > 0 else self.rate_right)
         if max_s:
             s = min(s, max_s)
         cmd = (0, self.speed) if deg > 0 else (self.speed, 0)
@@ -304,7 +459,7 @@ class Seeker:
             if self.emergency:
                 return self._wave(now)
             return (0, 0)
-        if self.state == "returning":
+        if self.returning:
             return self._return(heading, now)
         return (0, 0)
 
@@ -350,7 +505,24 @@ class Seeker:
         return (0, 0)
 
     def _return(self, heading, now):
-        # Straight line home: face the start, drive it in one go, then face the original way
+        # 1. The camera sees the wearer: go straight to them (this is what actually gets it home)
+        w = self.vision.wearer(0.6)
+        if w:
+            close = ((w["kind"] == "sticker" and w["size"] >= HOME_STICKER_SIZE) or
+                     (w["kind"] == "lying" and w.get("area", 0) >= HOME_LYING_AREA) or
+                     (w["kind"] == "person" and w["size"] >= HOME_PERSON_SIZE))
+            if close:
+                print(f"Back at the wearer (saw their {w['kind']})")
+                self.cancel()
+                return None
+            self.home_scanned = 0.0
+            self.state = f"returning ({w['kind']})"
+            if abs(w["cx"]) > RETURN_CAM_TOL:
+                return self._turn(-w["cx"] * CAMERA_FOV_DEG / 2, now, TURN_MAX_S)
+            return self._do((self.speed, self.speed), RETURN_CHUNK_S, now)
+
+        # 2. Not in view: head for where timing says the start is
+        self.state = "returning"
         dist = math.hypot(self.x, self.y)
         if dist > RETURN_DIST_TOL:
             bearing = math.degrees(math.atan2(-self.y, -self.x))
@@ -362,9 +534,13 @@ class Seeker:
             self.driving_home = True
             return self._do((self.speed, self.speed), min(dist, RETURN_CHUNK_S), now)
         self.driving_home = False
-        err = wrap(self.origin_heading - heading)
-        if abs(err) > RETURN_TURN_TOL:
-            return self._turn(err, now)
+
+        # 3. Timing says we're there but the wearer isn't in view: look round for them
+        if self.home_scanned < HOME_SCAN_DEG:
+            self.state = "looking for wearer"
+            self.home_scanned += SCAN_PULSE_S * self.rate_left
+            return self._turn(SCAN_PULSE_S * self.rate_left, now)
+        print("Back at the start (never saw the wearer)")
         self.cancel()
         return None
 
@@ -401,10 +577,9 @@ def calibrate_turn(vision, drive, speed, max_s=30.0):
         last = t
     time.sleep(0.5)
     _, ref = frame_after(time.monotonic())
-    yaw0, bad0 = vision.yaw_reading()
     print("Spinning; keep the area around the robot still...")
     start = time.monotonic()
-    best, best_t, best_yaw, seen_away = -1.0, None, 0.0, False
+    best, best_t, seen_away = -1.0, None, False
     trace = []
     try:
         last_t, last_drive = start, 0.0
@@ -415,7 +590,6 @@ def calibrate_turn(vision, drive, speed, max_s=30.0):
                 last_drive = now
             with vision.lock:
                 latest = vision.small
-                yaw = vision.yaw_px
             if not latest or latest[0] <= last_t:
                 time.sleep(0.02)
                 continue
@@ -428,7 +602,7 @@ def calibrate_turn(vision, drive, speed, max_s=30.0):
             if sim < 0.3:
                 seen_away = True              # we've turned away from the start view
             if seen_away and sim > 0.6 and sim > best:
-                best, best_t, best_yaw = sim, t, yaw   # coming back round to the start view
+                best, best_t = sim, t         # coming back round to the start view
             elif best_t and sim < best - 0.15:
                 break                         # passed the best match
     finally:
@@ -438,15 +612,6 @@ def calibrate_turn(vision, drive, speed, max_s=30.0):
     if not best_t:
         raise RuntimeError("never saw the starting view again; point the camera at something with detail")
     rate = 360.0 / (best_t - start)
-    cal = {"turn_rate_dps": round(rate, 1), "measured": time.strftime("%Y-%m-%d %H:%M")}
-    # We turned right (heading -360) while the view slid slide_px, so deg/px = -360 / slide_px
-    slide_px = best_yaw - yaw0
-    bad = vision.yaw_reading()[1] - bad0
-    if abs(slide_px) > FLOW_W:
-        cal["deg_per_px"] = round(-360.0 / slide_px, 5)
-        print(f"View slid {slide_px:.0f}px for a full turn ({bad} unreadable frames) -> camera heading on")
-    else:
-        print(f"View slide too small to use ({slide_px:.0f}px) -> camera heading off, timing only")
-    save_calibration(**cal)
+    save_calibration(turn_rate_dps=round(rate, 1), measured=time.strftime("%Y-%m-%d %H:%M"))
     print(f"Full turn in {best_t - start:.2f}s -> turn rate {rate:.1f} deg/s (saved to {TURN_RATE_FILE})")
     return rate

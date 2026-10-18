@@ -5,9 +5,11 @@
 #include <ArduinoBLE.h>
 
 // --- Tunable thresholds ---
-const float FREEFALL_THRESHOLD = 0.55;
-const float IMPACT_THRESHOLD = 1.8;
-const unsigned long FREEFALL_MIN_MS = 70;
+// Lowered so falls trigger more easily (was 0.55 g / 1.8 g / 70 ms). Walking false alarms are still
+// filtered out by the "stays down" check below (no steps, little movement for 1.5 s after impact).
+const float FREEFALL_THRESHOLD = 0.7;          // G below this = falling
+const float IMPACT_THRESHOLD = 1.4;            // G above this (soon after falling) = hit the ground
+const unsigned long FREEFALL_MIN_MS = 40;      // falling for at least this long
 const unsigned long IMPACT_WINDOW_MS = 600;
 // After an impact, a real fall ends with the wearer lying still. Walking, jumping or
 // dropping onto a chair keeps moving or keeps taking steps, so it's rejected here.
@@ -20,6 +22,13 @@ const float STILL_MAX_MOVING = 0.15;           // more than 15% moving samples =
 const float STEP_HIGH_G = 1.12;                // smoothed G above this = foot strike
 const float STEP_LOW_G = 0.95;                 // must dip below this before the next step
 const unsigned long STEP_MIN_MS = 280;         // fastest walking cadence
+// Step direction: walking backwards must not make the robot drive forward, so backward steps
+// aren't counted. When a foot lands walking forward, the body brakes: the forward/back
+// acceleration runs opposite to the vertical bump; walking backwards it's the other way round.
+// Strapped flat on the chest the board's Z axis points forward/back. Which sign is "forward"
+// depends on which way the board faces, so it's learned from your first steps: walk FORWARD first.
+const int AP_AXIS = 2;                         // forward/back axis of the board: 0=X 1=Y 2=Z
+const int DIR_LEARN_STEPS = 6;                 // steps used to learn which sign is forward
 const unsigned long COOLDOWN_MS = 5000;
 const unsigned long CONFIRM_WINDOW_MS = 5000;
 
@@ -31,6 +40,10 @@ const bool HELD_FLAT = false;
 const float GRAVITY_SMOOTH = 0.01;    // ~1 s average at 100 Hz, so walking bounce doesn't tilt "up"
 const float YAW_DEADBAND_DPS = 1.5;   // ignore turn rates below this (gyro noise/drift)
 const float STILL_DPS = 3.0;          // below this while not walking, slowly re-learn gyro bias
+// If the board moved while booting, its gyro offset is wrong and the heading drifts (seen: 23 deg/s).
+// Once it has been still (no acceleration change) for this long, re-learn the offset even if large.
+const unsigned long STILL_RELEARN_MS = 2000;
+const float RELEARN_MAX_DPS = 30.0;   // above this it's a real turn, not drift
 
 const float TAP_THRESHOLD = 1.8;
 const unsigned long DOUBLE_TAP_WINDOW_MS = 800;
@@ -75,6 +88,11 @@ uint16_t stepCount = 0;
 float stepG = 1.0;                       // smoothed G for step detection
 bool stepArmed = true;
 unsigned long lastStepMs = 0;
+float dirScore = 0;                      // sum of (forward/back accel x vertical accel) this step
+float dirLearnSum = 0;
+int dirLearned = 0;
+int dirSign = 0;                         // +1/-1 once learned: sign of dirScore for a forward step
+uint16_t backSteps = 0;
 
 uint16_t impactSteps = 0;                // step count at impact (STILL_CHECK)
 float impactG = 0;
@@ -203,6 +221,14 @@ void updateHeading() {
       gyroBiasY += 0.002 * gy;
       gyroBiasZ += 0.002 * gz;
     }
+    // Still for a while but the gyro says it's turning steadily: that's a bad boot calibration
+    static unsigned long stillSince = 0;
+    if (motionLevel >= 0.01) stillSince = millis();
+    else if (millis() - stillSince > STILL_RELEARN_MS && fabs(rate) < RELEARN_MAX_DPS) {
+      gyroBiasX += 0.01 * gx;
+      gyroBiasY += 0.01 * gy;
+      gyroBiasZ += 0.01 * gz;
+    }
 
     yawRate = fabs(rate) < YAW_DEADBAND_DPS ? 0 : rate;
     heading += yawRate * dt;
@@ -231,8 +257,35 @@ void sendFollowData() {
 
 void updateSteps(unsigned long now) {
   stepG += 0.2 * (currentG - stepG);
+
+  // Direction evidence: forward/back acceleration x vertical acceleration (gravity removed)
+  float gn = sqrt(gravX * gravX + gravY * gravY + gravZ * gravZ);
+  if (gn > 0.1) {
+    float vertical = (lastAx * gravX + lastAy * gravY + lastAz * gravZ) / gn - gn;
+    float a[3] = { lastAx - gravX, lastAy - gravY, lastAz - gravZ };
+    dirScore += a[AP_AXIS] * vertical;
+  }
+
   if (stepArmed && stepG > STEP_HIGH_G && now - lastStepMs > STEP_MIN_MS) {
-    stepCount++;
+    bool forward = true;
+    if (dirLearned < DIR_LEARN_STEPS) {
+      dirLearnSum += dirScore;                   // learning: assume these first steps are forward
+      if (++dirLearned == DIR_LEARN_STEPS) {
+        dirSign = dirLearnSum >= 0 ? 1 : -1;
+        Serial.print("Step direction learned, sign ");
+        Serial.println(dirSign);
+      }
+    } else {
+      forward = dirScore * dirSign >= 0;
+    }
+    dirScore = 0;
+    if (forward) {
+      stepCount++;
+    } else {
+      backSteps++;
+      Serial.print("Backward step (not counted), total ");
+      Serial.println(backSteps);
+    }
     lastStepMs = now;
     stepArmed = false;
   } else if (!stepArmed && stepG < STEP_LOW_G) {

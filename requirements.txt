@@ -4,3 +4,4 @@ bleak
 flask
 flask-cors
 pyserial
+msgpack
