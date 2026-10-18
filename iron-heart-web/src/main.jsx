@@ -84,6 +84,52 @@ function App() {
 
   const [banner, setBanner] = useState(null);
 
+  // Voice messages
+  const emergencyAudio = useRef(new Audio("/emergency.ogg"));
+  const ownerFellAudio = useRef(new Audio("/owner-fell.ogg"));
+  const willingAudio = useRef(new Audio("/willing-to-help.ogg"));
+  const lastRobotMode = useRef(null);
+  const arrivalPlayed = useRef(false);
+
+  useEffect(() => {
+    emergencyAudio.current.loop = true;
+  }, []);
+
+  useEffect(() => {
+    const mode = robotStatus?.mode;
+    const prev = lastRobotMode.current;
+    lastRobotMode.current = mode;
+
+    if (mode === "seeking" || mode === "scanning") {
+      arrivalPlayed.current = false;
+      if (prev !== "seeking" && prev !== "scanning") {
+        emergencyAudio.current.currentTime = 0;
+        emergencyAudio.current.play().catch(() => {});
+      }
+    } else {
+      emergencyAudio.current.pause();
+    }
+
+    if (mode === "arrived" && !arrivalPlayed.current) {
+      arrivalPlayed.current = true;
+      ownerFellAudio.current.currentTime = 0;
+      ownerFellAudio.current.play().catch(() => {});
+      ownerFellAudio.current.onended = () => {
+        setTimeout(() => {
+          willingAudio.current.currentTime = 0;
+          willingAudio.current.play().catch(() => {});
+        }, 800);
+      };
+    }
+
+    if (!mode || mode === "follow") {
+      arrivalPlayed.current = false;
+      emergencyAudio.current.pause();
+      ownerFellAudio.current.pause();
+      willingAudio.current.pause();
+    }
+  }, [robotStatus]);
+
   // Backend polling
   useEffect(() => {
     const id = setInterval(async () => {
