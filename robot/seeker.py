@@ -58,11 +58,18 @@ HOME_STICKER_SIZE = 0.18  # sticker this tall (share of frame) = back next to th
 HOME_LYING_AREA = 0.25    # someone lying down filling this much of the frame = back
 HOME_PERSON_SIZE = 0.6    # clicked person this tall = back
 RETURN_CAM_TOL = 0.3      # wearer within this of centre = drive straight at them
-HOME_SCAN_DEG = 360       # timing says we're home but no wearer in view: look round this far
-RETURN_TURN_TOL = 6       # deg off the way home before driving
-RETURN_DRIFT_TOL = 12     # deg the robot may drift while driving before it stops to correct
+RETURN_TURN_TOL = 10      # deg off the way home before driving
+RETURN_DRIFT_TOL = 20     # deg the robot may drift while driving before it stops to correct
 RETURN_CHUNK_S = 0.5      # bearing is re-checked this often while driving home (no stop)
-RETURN_DIST_TOL = 0.2     # forward-seconds
+# "Almost there" counts as home. Chasing the exact spot made it circle: every pivot moves the robot,
+# so close to the start the way home swings round and it keeps turning after it.
+# Distances are in forward-seconds (1 = one second of driving straight, ~ROBOT_SPEED_MPS metres).
+HOME_RADIUS = 1.5         # this close to the start = home
+NEAR_RADIUS = 3.0         # within this, also stop if...
+NEAR_BEHIND_DEG = 90      # ...the start is behind the robot (it drove past), or
+NEAR_BACKOFF = 0.5        # ...it's getting further away again
+RETURN_MAX_S = 60         # give up and call it home after this long
+HOME_WAVE_S = 4.0         # at home, wave the arms this long (same wave as on arrival), then follow mode
 
 
 def wrap(deg):
@@ -82,7 +89,8 @@ class Vision:
     """Robot camera. A fast thread reads frames and measures how far the view slides sideways
     (= how much the robot turned); a second thread runs YOLO on the newest frame."""
 
-    def __init__(self, camera_index):
+    def __init__(self, camera_index=None):
+        """camera_index None = the iPhone (Continuity Camera), found by name."""
         from ultralytics import YOLO
         self.model = YOLO(os.path.join(HERE, "yolov8n.pt"))
         self.camera_index = camera_index
@@ -114,26 +122,42 @@ class Vision:
         threading.Thread(target=self._capture, daemon=True).start()
         threading.Thread(target=self._detect, daemon=True).start()
 
+    def _open(self):
+        """Open the robot's camera: the given --camera index, or (by default) the iPhone's Continuity
+        Camera, looked up by name each time since its number changes. Waits for the iPhone rather
+        than falling back to the Mac's own camera."""
+        from camera import find_camera
+        waiting = False
+        while True:
+            index = self.camera_index if self.camera_index is not None else find_camera()
+            if index is not None:
+                cap = cv2.VideoCapture(index)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_W)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_H)
+                if cap.isOpened():
+                    name = "iPhone camera" if self.camera_index is None else "Camera"
+                    print(f"{name} {index} running")
+                    return cap
+                cap.release()
+            if not waiting:
+                print("Waiting for the iPhone Continuity Camera (phone locked, near the Mac, "
+                      "same Apple ID, Wi-Fi + Bluetooth on)...")
+                waiting = True
+            self.ok = False
+            time.sleep(3.0)
+
     def _capture(self):
-        cap = cv2.VideoCapture(self.camera_index)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_W)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_H)
-        if not cap.isOpened():
-            print(f"Camera {self.camera_index} failed to open (try --camera 1)")
-            return
-        print(f"Camera {self.camera_index} running")
+        cap = self._open()
         self.ok = True
         fails = 0
         while True:
             if self.reopen:
-                # Reset the camera (e.g. Continuity Camera dropped): close and open it again
+                # Reset the camera (e.g. Continuity Camera dropped): close and find it again
                 self.reopen = False
                 cap.release()
                 time.sleep(1.0)
-                cap = cv2.VideoCapture(self.camera_index)
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_W)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_H)
-                print(f"Camera {self.camera_index} reopened" if cap.isOpened() else "Camera reopen failed")
+                cap = self._open()
+                self.ok = True
             ok, frame = cap.read()
             if not ok:
                 fails += 1
@@ -354,7 +378,9 @@ class Seeker:
         self.scanned = 0.0
         self.last_seen = 0.0
         self.driving_home = False
-        self.home_scanned = 0.0
+        self.return_started = self.home_at = 0.0
+        self.closest = 0.0
+        self.drove_home = False
         self.rate_left = self.rate_right = turn_rate_dps   # per direction; the bridge sets the measured ones
         self.emergency = False    # started by a fall rather than the button
         self.confirmed = False    # True once the frontend confirms "lead this person back"
@@ -378,10 +404,24 @@ class Seeker:
     def go_home(self):
         self.action = None
         self.driving_home = False
-        self.home_scanned = 0.0
+        self.return_started = time.monotonic()
+        self.closest = math.hypot(self.x, self.y)
+        self.drove_home = False   # the "drove past" checks only count once it has headed home
         self.state = "returning"
 
+    def _arrive_home(self, why, now):
+        """Close enough to the start: stop, wave, then hand back to follow mode."""
+        print(f"Home ({why}): waving")
+        self.action = None
+        self.driving_home = False
+        self.home_at = now
+        self._wave_phase = None
+        self.state = "home"
+        return (0, 0)
+
     def cancel(self):
+        if self.state in ("arrived", "home"):
+            self.arm_cmd = b"p"   # stopped mid-wave: put the arms down
         self.action = None
         self.state = "off"
         self.emergency = False
@@ -397,8 +437,8 @@ class Seeker:
 
     @property
     def returning(self):
-        """On the way back (display state varies: 'returning (sticker)', 'looking for wearer', ...)."""
-        return self.state.startswith("returning") or self.state == "looking for wearer"
+        """On the way back (display state 'returning' or e.g. 'returning (sticker)')."""
+        return self.state.startswith("returning")
 
     def confirm(self):
         if self.state == "arrived" and not self.confirmed:
@@ -461,6 +501,8 @@ class Seeker:
             return (0, 0)
         if self.returning:
             return self._return(heading, now)
+        if self.state == "home":
+            return self._home_wave(now)
         return (0, 0)
 
     def _seek(self, now):
@@ -493,18 +535,36 @@ class Seeker:
 
     def _wave(self, now):
         """Flag the person down, then lead them back to the fallen wearer."""
-        t = now - self.arrived_at
-        if t >= WAVE_S:
-            self.arm_cmd = b"p"
+        if self._wave_arms(now - self.arrived_at, WAVE_S):
             self.go_home()
-            return (0, 0)
+        return (0, 0)
+
+    def _home_wave(self, now):
+        """Back at the start: wave, then done (None = back to follow mode)."""
+        if self._wave_arms(now - self.home_at, HOME_WAVE_S):
+            print("Back at the start, done waving")
+            self.cancel()
+            return None
+        return (0, 0)
+
+    def _wave_arms(self, t, length):
+        """Arms up/down every WAVE_PERIOD_S; True once `length` seconds are up (arms left down)."""
+        if t >= length:
+            self.arm_cmd = b"p"
+            self._wave_phase = None
+            return True
         phase = int(t / WAVE_PERIOD_S) % 2
         if phase != getattr(self, "_wave_phase", None):
             self._wave_phase = phase
             self.arm_cmd = b"o" if phase == 0 else b"p"
-        return (0, 0)
+        return False
 
     def _return(self, heading, now):
+        dist = math.hypot(self.x, self.y)
+        self.closest = min(self.closest, dist)
+        if now - self.return_started > RETURN_MAX_S:
+            return self._arrive_home("took too long", now)
+
         # 1. The camera sees the wearer: go straight to them (this is what actually gets it home)
         w = self.vision.wearer(0.6)
         if w:
@@ -512,37 +572,29 @@ class Seeker:
                      (w["kind"] == "lying" and w.get("area", 0) >= HOME_LYING_AREA) or
                      (w["kind"] == "person" and w["size"] >= HOME_PERSON_SIZE))
             if close:
-                print(f"Back at the wearer (saw their {w['kind']})")
-                self.cancel()
-                return None
-            self.home_scanned = 0.0
+                return self._arrive_home(f"next to the wearer, saw their {w['kind']}", now)
             self.state = f"returning ({w['kind']})"
             if abs(w["cx"]) > RETURN_CAM_TOL:
                 return self._turn(-w["cx"] * CAMERA_FOV_DEG / 2, now, TURN_MAX_S)
             return self._do((self.speed, self.speed), RETURN_CHUNK_S, now)
 
-        # 2. Not in view: head for where timing says the start is
+        # 2. Not in view: head for where timing says the start is, and stop once it's nearly there
         self.state = "returning"
-        dist = math.hypot(self.x, self.y)
-        if dist > RETURN_DIST_TOL:
-            bearing = math.degrees(math.atan2(-self.y, -self.x))
-            err = wrap(bearing - heading)
-            tol = RETURN_DRIFT_TOL if self.driving_home else RETURN_TURN_TOL
-            if abs(err) > tol:
-                self.driving_home = False
-                return self._turn(err, now)
-            self.driving_home = True
-            return self._do((self.speed, self.speed), min(dist, RETURN_CHUNK_S), now)
-        self.driving_home = False
-
-        # 3. Timing says we're there but the wearer isn't in view: look round for them
-        if self.home_scanned < HOME_SCAN_DEG:
-            self.state = "looking for wearer"
-            self.home_scanned += SCAN_PULSE_S * self.rate_left
-            return self._turn(SCAN_PULSE_S * self.rate_left, now)
-        print("Back at the start (never saw the wearer)")
-        self.cancel()
-        return None
+        if dist <= HOME_RADIUS:
+            return self._arrive_home(f"{dist:.1f} from the start", now)
+        bearing = math.degrees(math.atan2(-self.y, -self.x))
+        err = wrap(bearing - heading)
+        if dist <= NEAR_RADIUS and self.drove_home:
+            if abs(err) > NEAR_BEHIND_DEG:
+                return self._arrive_home("drove past the start", now)
+            if dist > self.closest + NEAR_BACKOFF:
+                return self._arrive_home("getting further away", now)
+        tol = RETURN_DRIFT_TOL if self.driving_home else RETURN_TURN_TOL
+        if abs(err) > tol:
+            self.driving_home = False
+            return self._turn(err, now)
+        self.driving_home = self.drove_home = True
+        return self._do((self.speed, self.speed), min(dist, RETURN_CHUNK_S), now)
 
 
 def calibrate_turn(vision, drive, speed, max_s=30.0):

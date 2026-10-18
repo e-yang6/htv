@@ -166,7 +166,7 @@ def start_http(follower, seeker, phone, port, dash=None, dash_port=None):
         if not seeker.active:
             follower.stop("paused")
             seeker.start(follower.robot_heading)
-        elif seeker.returning:
+        elif seeker.returning or seeker.state == "home":
             seeker.cancel()
             follower.reset_distance()
         else:
@@ -339,7 +339,8 @@ async def main():
     extra = parser.add_argument_group("optional")
     extra.add_argument("--seek", action="store_true",
                        help="camera go-to-person + fall rescue (Mac only; needs OpenCV + YOLO)")
-    extra.add_argument("--camera", type=int, default=0, help="camera index for --seek / --calibrate-turn")
+    extra.add_argument("--camera", type=int, default=None,
+                       help="camera index for --seek / --calibrate-turn (default: the iPhone, found by name)")
     extra.add_argument("--laptop-on-robot", action="store_true",
                        help="this machine rides on the robot, so signal strength = distance to you")
     extra.add_argument("--http-port", type=int, default=5002, help="robot API port (robot controls, iPhone)")
