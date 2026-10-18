@@ -12,8 +12,11 @@ ADB="$HOME/Library/Application Support/arduino_applab_workspace/arduino15/data/p
 
 "$ADB" wait-for-device
 echo "UNO Q connected"
-# Stop the board's own follow mode (it would grab the BLE33 and the motors)
-"$ADB" shell 'for p in $(pgrep -f "python3 -u follow_bridge.py"); do kill $p; done' || true
+# Stop the board's own follow mode (it would grab the BLE33 and the motors), and keep it from
+# restarting on its own if the board reboots (start_robot.sh checks this marker)
+"$ADB" shell 'touch ~/robot/mac_in_control; for p in $(pgrep -f "python3 -u follow_bridge.py"); do kill $p; done' || true
+# Hand control back to the board when this script stops
+trap '"$ADB" shell "rm -f ~/robot/mac_in_control" 2>/dev/null' EXIT INT TERM
 # The UNO Q's MCU router, reachable from here as localhost:5006
 "$ADB" forward tcp:5006 localfilesystem:/var/run/arduino-router.sock
 # The dashboard (iron-heart-web, see README): start it if it isn't already running, then open it
@@ -23,4 +26,4 @@ if ! curl -s -o /dev/null http://localhost:5173; then
 fi
 open -a "Google Chrome" http://localhost:5173 2>/dev/null || open http://localhost:5173
 
-exec python3 -u follow_bridge.py --robot-router localhost:5006 --seek "$@"
+python3 -u follow_bridge.py --robot-router localhost:5006 --seek "$@"
