@@ -40,6 +40,9 @@ iPhone camera (go-to-person, fall rescue, sticker / click-to-follow), the dashbo
 cd robot && ./run_mac.sh
 ```
 
+If ngrok is installed and signed in (see Mobile access below), it also prints a phone link to the
+dashboard.
+
 Don't also run `robot/server.py` (it would fight the bridge for the BLE33 and the camera), and
 don't use the dashboard's Web Bluetooth "Connect BLE" (same reason).
 
