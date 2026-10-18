@@ -9,7 +9,8 @@ port 5001, now served by follow_bridge.py itself so one program owns the BLE33 a
   GET  /simulate/emergency  pretend no double-tap came: emergency  (robot goes for help)
   GET  /simulate/reset      pretend the double-tap cancel
   GET  /modules/available|attached|history,  POST /modules/attach|detach|execute   (robot/modules)
-  GET  /api/host/profile    host's medical condition (onboarding terminal); POST {"condition": ...} sets it
+  GET  /api/host/profile    host's medical condition (onboarding terminal);
+                            POST {"condition", "description"?, "steps"?: [...]} sets it
 
 The robot's own controls stay on port 5002 (see follow_bridge.start_http).
 """
@@ -21,7 +22,7 @@ from collections import deque
 # robot/modules imports itself as "robot.modules", so the repo root must be importable (as server.py did)
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from robot.modules.registry import registry
-from host_profile import get_host_condition, save_host_condition, speak_emergency
+from host_profile import get_host_condition, get_host_profile, save_host_condition, speak_emergency
 
 
 class DashboardData:
@@ -143,7 +144,8 @@ def handle(handler, dash, follower, seeker, method):
                 dash.backup.cancel()
             return handler._json({"status": "normal"}) or True
         if path == "/api/host/profile":
-            return handler._json({"success": True, "condition": get_host_condition("Not specified")}) or True
+            p = get_host_profile()
+            return handler._json({"success": True, **p, "condition": p["condition"] or "Not specified"}) or True
         if path == "/modules/available":
             return handler._json(registry.get_available()) or True
         if path == "/modules/attached":
@@ -161,9 +163,12 @@ def handle(handler, dash, follower, seeker, method):
             cond = (data.get("condition") or "").strip()
             if not cond:
                 return handler._json({"success": False, "error": "Condition cannot be empty"}, 400) or True
-            save_host_condition(cond)
-            print(f"[HostProfile] Saved condition: {cond}")
-            return handler._json({"success": True, "condition": cond}) or True
+            description = (data.get("description") or "").strip()
+            steps = [str(s).strip() for s in data.get("steps") or [] if str(s).strip()]
+            save_host_condition(cond, description, steps)
+            print(f"[HostProfile] Saved condition: {cond}" + (f" ({len(steps)} steps)" if steps else ""))
+            return handler._json({"success": True, "condition": cond, "description": description,
+                                  "steps": steps}) or True
         slot = data.get("slot")
         if not slot:
             return handler._json({"success": False, "error": "Missing slot"}) or True

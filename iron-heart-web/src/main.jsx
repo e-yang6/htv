@@ -118,6 +118,16 @@ function App() {
       return "";
     }
   });
+  // For a condition typed in by hand during onboarding: its description and the helper's steps
+  const [hostProfile, setHostProfile] = useState(() => {
+    try {
+      return { description: "", steps: [], ...JSON.parse(localStorage.getItem("ironheart_host_profile") || "{}") };
+    } catch {
+      return { description: "", steps: [] };
+    }
+  });
+  // Full-screen "what to do" page, shown once the bystander says yes
+  const [showInstructions, setShowInstructions] = useState(false);
 
 
   const [backendOnline, setBackendOnline] = useState(false);
@@ -418,7 +428,8 @@ function App() {
   };
   const showConfirm = robotStatus?.awaiting_confirm || testConfirm;
   const isEmergency = status?.emergency || banner?.type === "crit";
-  const instructions = EMERGENCY_INSTRUCTIONS[hostCondition] || DEFAULT_INSTRUCTIONS;
+  const instructions = EMERGENCY_INSTRUCTIONS[hostCondition]
+    || (hostProfile.steps?.length ? hostProfile.steps : DEFAULT_INSTRUCTIONS);
 
   return (
     <div className="min-h-screen bg-[#090b0f] text-zinc-100">
@@ -430,9 +441,24 @@ function App() {
           <p className="confirm-condition">They have {hostCondition || "an urgent medical condition"}</p>
           <p className="confirm-question">This robot can lead you to them. Will you follow?</p>
           <div className="confirm-actions">
-            <button onClick={testConfirm ? endTestConfirm : confirmRobot} className="confirm-btn confirm-yes">YES, LEAD ME</button>
+            <button onClick={() => { (testConfirm ? endTestConfirm : confirmRobot)(); setShowInstructions(true); }} className="confirm-btn confirm-yes">YES, LEAD ME</button>
             <button onClick={testConfirm ? endTestConfirm : rejectRobot} className="confirm-btn">No</button>
           </div>
+        </div>
+      )}
+
+      {showInstructions && !showConfirm && (
+        <div className="instr-screen" role="dialog" aria-modal="true" aria-labelledby="instr-title">
+          <p className="instr-tag">FOLLOW THE ROBOT — IT WILL TAKE YOU TO THEM</p>
+          <h1 id="instr-title" className="instr-title">What to do when you get there</h1>
+          <p className="instr-condition">They have {hostCondition || "an urgent medical condition"}</p>
+          {hostProfile.description && !EMERGENCY_INSTRUCTIONS[hostCondition] && (
+            <p className="instr-description">{hostProfile.description}</p>
+          )}
+          <ol className="instr-steps">
+            {instructions.map((step, i) => <li key={i}>{step}</li>)}
+          </ol>
+          <button className="instr-close" onClick={() => setShowInstructions(false)}>Close</button>
         </div>
       )}
 
@@ -622,7 +648,7 @@ function App() {
           apiBase={API}
           isOpen={isOnboardingOpen}
           onClose={() => setIsOnboardingOpen(false)}
-          onConditionSet={(c) => setHostCondition(c)}
+          onConditionSet={(c, profile) => { setHostCondition(c); if (profile) setHostProfile(profile); }}
         />
 
       </div>

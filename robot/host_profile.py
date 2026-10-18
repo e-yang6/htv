@@ -1,4 +1,5 @@
-"""The host's (wearer's) medical condition, set in the dashboard's onboarding terminal, and spoken
+"""The host's (wearer's) medical condition (plus, for a condition typed in by hand, a description
+and the steps a helper should follow), set in the dashboard's onboarding terminal, and spoken
 emergency messages. Shared by dashboard.py (the API and the alert) and seeker.py (the robot asking a
 bystander for help). Stored in host_profile.json next to this file.
 """
@@ -21,9 +22,21 @@ def get_host_condition(default="an urgent medical condition"):
         return default
 
 
-def save_host_condition(condition):
+def get_host_profile():
+    """{"condition", "description", "steps"} as saved (empty values if nothing is saved)."""
+    try:
+        with open(HOST_PROFILE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        data = {}
+    return {"condition": data.get("condition") or "", "description": data.get("description") or "",
+            "steps": [s for s in data.get("steps") or [] if isinstance(s, str) and s.strip()]}
+
+
+def save_host_condition(condition, description="", steps=None):
     with open(HOST_PROFILE_FILE, "w", encoding="utf-8") as f:
-        json.dump({"condition": condition, "updated_at": time.time()}, f, indent=2)
+        json.dump({"condition": condition, "description": description, "steps": steps or [],
+                   "updated_at": time.time()}, f, indent=2)
 
 
 def speak_emergency(text):
