@@ -44,6 +44,50 @@ function GForceChart({ data, max = 4 }) {
   );
 }
 
+const EMERGENCY_INSTRUCTIONS = {
+  "Severe Peanut Allergy": [
+    "Locate the EpiPen on the robot's arm module",
+    "Remove the blue safety cap",
+    "Press the orange tip firmly against the outer thigh",
+    "Hold for 10 seconds, then remove",
+    "Call 911 immediately",
+    "Place them in recovery position on their side",
+  ],
+  "Type 1 Diabetes": [
+    "Check if they are conscious and responsive",
+    "If conscious, give them sugar — juice, candy, or glucose tabs",
+    "If unconscious, do NOT put anything in their mouth",
+    "Place them in recovery position on their side",
+    "Call 911 immediately",
+    "Monitor breathing until help arrives",
+  ],
+  "Severe Asthma": [
+    "Help them sit upright — do not lay them down",
+    "Check the robot's arm for an inhaler module",
+    "Help them take 1 puff, wait 30 seconds, repeat up to 4 puffs",
+    "Keep them calm and encourage slow breathing",
+    "Call 911 if no improvement after 4 puffs",
+    "Do not leave them alone",
+  ],
+  "Cardiac History / Pacemaker Alert": [
+    "Call 911 immediately — mention pacemaker",
+    "If unconscious and not breathing, begin CPR",
+    "If an AED is nearby, use it — it will detect the pacemaker",
+    "Do NOT place AED pads directly over the pacemaker bump",
+    "Place them flat on their back on a hard surface",
+    "Continue CPR until paramedics arrive",
+  ],
+};
+
+const DEFAULT_INSTRUCTIONS = [
+  "Call 911 immediately",
+  "Check if the person is conscious and breathing",
+  "Place them in recovery position on their side",
+  "Keep them warm and comfortable",
+  "Do not move them unless they are in danger",
+  "Stay with them until help arrives",
+];
+
 function Stat({ label, value, hint, accent = false }) {
   return (
     <div className="min-w-0">
@@ -75,22 +119,6 @@ function App() {
     }
   });
 
-  const recitedEmergencyRef = useRef(false);
-  const recitedPersonRef = useRef(false);
-
-  const speakEmergencyAloud = useCallback((text) => {
-    if (!("speechSynthesis" in window)) return;
-    try {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = 0.95;
-      u.pitch = 1.0;
-      u.volume = 1.0;
-      window.speechSynthesis.speak(u);
-    } catch (e) {
-      console.warn("[TTS error]", e);
-    }
-  }, []);
 
   const [backendOnline, setBackendOnline] = useState(false);
   const [status, setStatus] = useState(null);
@@ -186,17 +214,7 @@ function App() {
           if (s.emergency) {
             const condText = hostCondition || s.host_condition || "an urgent medical condition";
             setBanner({ type: "crit", text: `Emergency — Host Condition: ${condText} — seeking nearest person (${s.direction || "scanning"})` });
-            if (!recitedEmergencyRef.current) {
-              recitedEmergencyRef.current = true;
-              speakEmergencyAloud(`Emergency alert! The host has collapsed and requires immediate attention. The host's condition is: ${condText}. Immediate medical care required!`);
-            }
-            if (s.person_count > 0 && !recitedPersonRef.current) {
-              recitedPersonRef.current = true;
-              speakEmergencyAloud(`Emergency! Please help! My host has collapsed and has ${condText}. Please follow me to assist them!`);
-            }
           } else {
-            recitedEmergencyRef.current = false;
-            recitedPersonRef.current = false;
             if (s.fall_waiting) setBanner({ type: "warn", text: "Fall detected — waiting for response" });
             else setBanner(null);
           }
@@ -212,7 +230,7 @@ function App() {
       }
     }, 800);
     return () => clearInterval(id);
-  }, [bleConnected, feedError, localCamera, hostCondition, speakEmergencyAloud]);
+  }, [bleConnected, feedError, localCamera, hostCondition]);
 
   // Robot polling
   useEffect(() => {
@@ -259,9 +277,6 @@ function App() {
           fallWaitRef.current = false;
           fallStartRef.current = null;
           setBanner(null);
-          if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-          recitedEmergencyRef.current = false;
-          recitedPersonRef.current = false;
           fetch(API + "/simulate/reset").catch(() => {});
         } else if (val === 1) {
           fallWaitRef.current = true;
@@ -275,7 +290,6 @@ function App() {
           fallStartRef.current = null;
           const condText = hostCondition || "an urgent medical condition";
           setBanner({ type: "crit", text: `EMERGENCY — Host Condition: ${condText} — No response — Robot dispatched!` });
-          speakEmergencyAloud(`Emergency alert! The host has collapsed and requires immediate attention. The host's condition is: ${condText}. Immediate medical care required!`);
           fetch(API + "/simulate/emergency").catch(() => {});
         }
       });
@@ -353,6 +367,8 @@ function App() {
   })();
 
   const showConfirm = robotStatus?.awaiting_confirm;
+  const isEmergency = status?.emergency || banner?.type === "crit";
+  const instructions = EMERGENCY_INSTRUCTIONS[hostCondition] || DEFAULT_INSTRUCTIONS;
 
   return (
     <div className="min-h-screen bg-[#090b0f] text-zinc-100">
@@ -403,10 +419,24 @@ function App() {
               {TRACES.map((d, i) => <path key={"b"+i} d={d} className="cb-base" />)}
               {TRACES.map((d, i) => <path key={"p"+i} d={d} pathLength="100" className="cb-pulse" />)}
             </svg>
-            <div className="heart-stage">
+            <div className={`heart-stage ${isEmergency ? "opacity-10" : ""} transition-opacity duration-500`}>
               <div className="heart-aura" />
               <img src="/heart.png" alt="" className="heart-art" />
             </div>
+            {isEmergency && (
+              <div className="absolute inset-0 z-10 flex flex-col justify-center p-5 sm:p-8">
+                <div className="micro text-red-400 font-semibold mb-1">EMERGENCY — {hostCondition || "UNKNOWN CONDITION"}</div>
+                <div className="text-sm font-semibold text-zinc-100 mb-3">What to do:</div>
+                <ol className="space-y-2">
+                  {instructions.map((step, i) => (
+                    <li key={i} className="flex gap-2 text-xs text-zinc-300 leading-relaxed">
+                      <span className="shrink-0 text-cyan font-mono">{i + 1}.</span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
           </section>
 
           {/* RIGHT — Camera */}
@@ -504,7 +534,7 @@ function App() {
                 onClick={() => {
                   fetch(API + "/simulate/emergency").catch(() => {});
                   const condText = hostCondition || "an urgent medical condition";
-                  speakEmergencyAloud(`Emergency alert! The host has collapsed and requires immediate attention. The host's condition is: ${condText}. Immediate medical care required!`);
+                  setBanner({ type: "crit", text: `Emergency — Host Condition: ${condText}` });
                 }}
               >
                 SIM EMERGENCY
@@ -513,9 +543,6 @@ function App() {
                 className="action-button py-2"
                 onClick={() => {
                   fetch(API + "/simulate/reset").catch(() => {});
-                  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-                  recitedEmergencyRef.current = false;
-                  recitedPersonRef.current = false;
                   setBanner(null);
                 }}
               >
