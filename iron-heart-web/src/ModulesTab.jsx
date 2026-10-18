@@ -174,20 +174,8 @@ function ArmSlot({ label, slot, moduleId, executing, dragOver, onDragOver, onDra
       </div>
 
       {mod ? (
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex items-center">
           <div className="text-sm font-medium text-zinc-200">{mod.name}</div>
-          <div className="mt-auto pt-3 space-y-1.5">
-            {mod.actions.map(act => (
-              <button
-                key={act.id}
-                disabled={executing}
-                onClick={() => onExecute(act.id)}
-                className="action-button w-full py-2 text-[10px]"
-              >
-                {act.label.toUpperCase()}
-              </button>
-            ))}
-          </div>
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
