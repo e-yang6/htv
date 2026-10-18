@@ -4,8 +4,8 @@ import { Camera, Terminal } from "lucide-react";
 import ModulesTab from "./ModulesTab";
 import "./styles.css";
 
-const API = "http://localhost:5001";
-const ROBOT = "http://localhost:5002";
+const API = "/api";
+const ROBOT = "/robot";
 const BLE_SERVICE_UUID = "19b10000-e8f2-537e-4f6c-d104768a1214";
 const FALL_CHAR_UUID = "19b10001-e8f2-537e-4f6c-d104768a1214";
 const GFORCE_CHAR_UUID = "19b10002-e8f2-537e-4f6c-d104768a1214";
