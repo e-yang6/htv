@@ -21,9 +21,6 @@ button { -webkit-tap-highlight-color: transparent; }
 .circuit-svg { position:absolute; inset:-1px; width:calc(100% + 2px); height:calc(100% + 2px); overflow:hidden; pointer-events:none; z-index:1; border-radius:14px; }
 .cb-base { fill:none; stroke:rgba(0,120,255,.08); stroke-width:1.2; stroke-linecap:square; }
 .cb-pulse { fill:none; stroke:#0091ff; stroke-width:2; stroke-linecap:square; filter:url(#glow); stroke-dasharray:15 100; stroke-dashoffset:15; opacity:0; animation:cbPulse 1.38s ease-out infinite; }
-.cb-pad { fill:rgba(0,120,255,.1); stroke:rgba(0,120,255,.18); stroke-width:.8; }
-.cb-pad-glow { fill:#0091ff; opacity:0; filter:url(#glow); animation:padFlash 1.38s ease-out infinite; }
-.cb-center { fill:rgba(0,120,255,.12); stroke:rgba(0,120,255,.2); stroke-width:1; animation:centerPulse 1.38s ease-in-out infinite; }
 
 .gforce { color:#18a8d8; font-size:clamp(30px,5vw,43px); font-weight:300; letter-spacing:-.05em; line-height:1; }
 .stat-value { color:#f0f3f8; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:clamp(16px,2.5vw,23px); letter-spacing:-.04em; overflow-wrap:anywhere; }
@@ -40,16 +37,6 @@ button { -webkit-tap-highlight-color: transparent; }
   8% { stroke-dashoffset:5; opacity:.9; }
   48% { stroke-dashoffset:-100; opacity:.25; }
   58%,100% { stroke-dashoffset:-100; opacity:0; }
-}
-@keyframes padFlash {
-  0%,40% { opacity:0; }
-  50% { opacity:.7; }
-  65%,100% { opacity:0; }
-}
-@keyframes centerPulse {
-  0%,100% { fill:rgba(0,120,255,.12); }
-  7% { fill:rgba(0,145,255,.7); }
-  25% { fill:rgba(0,120,255,.12); }
 }
 @keyframes heartbeat { 0%,100% { transform:scale(1); } 7% { transform:scale(1.15); } 14% { transform:scale(.97); } 20% { transform:scale(1.08); } 31% { transform:scale(1); } }
 @keyframes auraPulse { 0%,100% { opacity:.18; transform:scale(.85); } 8% { opacity:.55; transform:scale(1.15); } 19% { opacity:.25; transform:scale(.93); } 30% { opacity:.45; transform:scale(1.06); } }

@@ -11,25 +11,20 @@ const GFORCE_CHAR_UUID = "19b10002-e8f2-537e-4f6c-d104768a1214";
 const MAX_G_POINTS = 60;
 
 const TRACES = [
-  "M200 150 V10",
-  "M200 150 V90 H55 V10",
-  "M200 150 V90 H135 V10",
-  "M200 150 V100 H290 V10",
-  "M200 150 V100 H350 V50 H395",
-  "M200 150 H310 V70 H395",
-  "M200 150 H395",
-  "M200 150 H310 V230 H395",
-  "M200 150 V290",
-  "M200 150 V210 H110 V290",
-  "M200 150 V210 H300 V290",
-  "M200 150 H90 V60 H5",
-  "M200 150 H5",
-  "M200 150 H90 V245 H5",
-];
-const PADS = [
-  [200,10],[55,10],[135,10],[290,10],[395,50],
-  [395,70],[395,150],[395,230],[200,290],
-  [110,290],[300,290],[5,60],[5,150],[5,245],
+  "M200 150 V0",
+  "M200 150 V90 H55 V0",
+  "M200 150 V90 H135 V0",
+  "M200 150 V100 H290 V0",
+  "M200 150 V100 H350 V50 H400",
+  "M200 150 H310 V70 H400",
+  "M200 150 H400",
+  "M200 150 H310 V230 H400",
+  "M200 150 V300",
+  "M200 150 V210 H110 V300",
+  "M200 150 V210 H300 V300",
+  "M200 150 H90 V60 H0",
+  "M200 150 H0",
+  "M200 150 H90 V245 H0",
 ];
 
 function GForceChart({ data, max = 4 }) {
@@ -264,11 +259,6 @@ function App() {
               </defs>
               {TRACES.map((d, i) => <path key={"b"+i} d={d} className="cb-base" />)}
               {TRACES.map((d, i) => <path key={"p"+i} d={d} pathLength="100" className="cb-pulse" />)}
-              {PADS.map(([x,y], i) => <React.Fragment key={"t"+i}>
-                <circle cx={x} cy={y} r="3" className="cb-pad" />
-                <circle cx={x} cy={y} r="3" className="cb-pad-glow" />
-              </React.Fragment>)}
-              <circle cx="200" cy="150" r="5" className="cb-center" />
             </svg>
             <div className="heart-stage">
               <div className="heart-aura" />
