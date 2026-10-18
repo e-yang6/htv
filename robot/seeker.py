@@ -40,7 +40,8 @@ MIN_AIM_DEG = 20          # aiming turns are at least this big...
 AIM_GAIN = 1.2            # ...and aim slightly past centre, so one turn does the job
 SETTLE_S = 0.15           # stop after a turn so the robot stops coasting
 LOST_GRACE_S = 1.0        # target missing this long = start scanning
-SCAN_PULSE_S = 0.3        # scan = left turns of this length...
+SCAN_PULSE_S = 0.5        # scan = left turns of this length (longer = fewer short turns, so the
+                          # timed heading stays closer to the truth for the trip back)...
 SCAN_MAX_DEG = 360        # ...until we've looked all the way round
 
 # --- Fall response ---
@@ -59,6 +60,12 @@ HOME_LYING_AREA = 0.25    # someone lying down filling this much of the frame = 
 HOME_PERSON_SIZE = 0.6    # clicked person this tall = back
 RETURN_CAM_TOL = 0.3      # wearer within this of centre = drive straight at them
 RETURN_TURN_TOL = 10      # deg off the way home before driving
+# The heading is only timed from the turns, so after a search it can be well off. After turning for
+# home the robot looks for the wearer (sticker / lying down / clicked) with the camera before driving:
+# it faces the timed way home plus each of these offsets, looking LOOK_S at each, and homes in on the
+# wearer as soon as it sees them. Not seen at all: back to the timed way home and drive.
+LOOK_OFFSETS = (0, 35, -35, 70, -70, 0)
+LOOK_S = 0.6
 RETURN_DRIFT_TOL = 20     # deg the robot may drift while driving before it stops to correct
 RETURN_CHUNK_S = 0.5      # bearing is re-checked this often while driving home (no stop)
 # "Almost there" counts as home. Chasing the exact spot made it circle: every pivot moves the robot,
@@ -407,6 +414,8 @@ class Seeker:
         self.return_started = time.monotonic()
         self.closest = math.hypot(self.x, self.y)
         self.drove_home = False   # the "drove past" checks only count once it has headed home
+        self.look = list(LOOK_OFFSETS)   # camera look-round for the wearer still to do
+        self.look_until = None
         self.state = "returning"
 
     def _arrive_home(self, why, now):
@@ -565,9 +574,14 @@ class Seeker:
         if now - self.return_started > RETURN_MAX_S:
             return self._arrive_home("took too long", now)
 
-        # 1. The camera sees the wearer: go straight to them (this is what actually gets it home)
-        w = self.vision.wearer(0.6)
+        # 1. The camera sees the wearer: go straight to them (this is what actually gets it home).
+        # Only frames from after the last turn count (blurred / stale ones point the wrong way).
+        age = min(0.6, now - self.fresh_after)
+        if age <= 0:
+            return (0, 0)
+        w = self.vision.wearer(age)
         if w:
+            self.look = []        # found them: no more looking round
             close = ((w["kind"] == "sticker" and w["size"] >= HOME_STICKER_SIZE) or
                      (w["kind"] == "lying" and w.get("area", 0) >= HOME_LYING_AREA) or
                      (w["kind"] == "person" and w["size"] >= HOME_PERSON_SIZE))
@@ -583,6 +597,22 @@ class Seeker:
         if dist <= HOME_RADIUS:
             return self._arrive_home(f"{dist:.1f} from the start", now)
         bearing = math.degrees(math.atan2(-self.y, -self.x))
+        # 2a. Look round for the wearer around the timed way home before driving there
+        if self.look:
+            self.state = "returning (looking)"
+            look_err = wrap(bearing + self.look[0] - heading)
+            if self.look_until is None:
+                if abs(look_err) > RETURN_TURN_TOL:
+                    return self._turn(look_err, now)
+                self.look_until = now + LOOK_S
+            if now < self.look_until:
+                return (0, 0)
+            self.look.pop(0)
+            self.look_until = None
+            if self.look:
+                return (0, 0)
+            print("Didn't see the wearer, going by timing")
+            self.state = "returning"
         err = wrap(bearing - heading)
         if dist <= NEAR_RADIUS and self.drove_home:
             if abs(err) > NEAR_BEHIND_DEG:
